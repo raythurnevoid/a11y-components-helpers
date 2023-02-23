@@ -1,0 +1,15 @@
+@use '$lib/styles/typography.scss';
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	padding: 0;
+	margin: 0;
+	width: 100%;
+}
+
+main {
+	padding: 16px;
+}

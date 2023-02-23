@@ -1,0 +1,11 @@
+@use '@fontsource/roboto/300.css' as roboto-300;
+@use '@fontsource/roboto/400.css' as roboto-400;
+@use '@fontsource/fira-mono/400.css' as fira-mono-400;
+
+body {
+	font-family: 'Roboto', Arial;
+}
+
+code {
+	font-family: 'Fira Mono', Consolas, monospace;
+}
