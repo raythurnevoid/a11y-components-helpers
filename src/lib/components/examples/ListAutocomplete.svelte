@@ -1,191 +1,407 @@
 <script lang="ts">
-	import { ComboboxAutocomplete } from '$lib/lib/combobox/list-autocomplete.js';
-	import { onMount, tick } from 'svelte';
-	import { notEmpty } from '../../lib/utils/array-filter-predicates.js';
+	import * as autocompleteHelpers from '$lib/lib/combobox/list-autocomplete.js';
+	import * as api from './suggestions.js';
+	import { onMount } from 'svelte';
 	import './ListAutocomplete.css';
 
-	export let autocomplete: 'list' | 'both' = 'list';
-
-	let listbox: HTMLDataListElement;
-	let button: HTMLButtonElement;
-	let combobox: HTMLInputElement;
-
-	let value: string = '';
-
-	let comboboxA11yAttributes: { ['aria-activedescendant']: string } = {
-		'aria-activedescendant': ''
-	};
-
-	let autocompleteI: ComboboxAutocomplete;
-
-	let options: string[] = [
-		'Alabama',
-		'Alaska',
-		'American Samoa',
-		'Arizona',
-		'Arkansas',
-		'California',
-		'Colorado',
-		'Connecticut',
-		'Delaware',
-		'District of Columbia',
-		'Florida',
-		'Georgia',
-		'Guam',
-		'Hawaii',
-		'Idaho',
-		'Illinois',
-		'Indiana',
-		'Iowa',
-		'Kansas',
-		'Kentucky',
-		'Louisiana',
-		'Maine',
-		'Maryland',
-		'Massachusetts',
-		'Michigan',
-		'Minnesota',
-		'Mississippi',
-		'Missouri',
-		'Montana',
-		'Nebraska',
-		'Nevada',
-		'New Hampshire',
-		'New Jersey',
-		'New Mexico',
-		'New York',
-		'North Carolina',
-		'North Dakota',
-		'Northern Marianas Islands',
-		'Ohio',
-		'Oklahoma',
-		'Oregon',
-		'Pennsylvania',
-		'Puerto Rico',
-		'Rhode Island',
-		'South Carolina',
-		'South Dakota',
-		'Tennessee',
-		'Texas',
-		'Utah',
-		'Vermont',
-		'Virgin Islands',
-		'Virginia',
-		'Washington',
-		'West Virginia',
-		'Wisconsin',
-		'Wyoming'
-	];
-	let filteredOptions: string[] = options;
-
-	let optionsWithDomAttributes = options.map((option) => {
-		return {
-			value: option,
-			attributes: {
-				'aria-selected': 'false' as 'false' | 'true'
-			}
-		};
+	export let autocomplete: 'list' | 'both' | 'none';
+	export let state = autocompleteHelpers.setState({
+		autocomplete,
+		hasHover: false,
+		isListboxOpen: false,
+		elementWithFocus: null,
+		activeOption: null
 	});
 
-	$: filteredOptionsWithDomAttributes = filteredOptions
-		.map((option) => {
-			return optionsWithDomAttributes.find(
-				(optionWithDomAttributes) => optionWithDomAttributes.value === option
-			);
-		})
-		.filter(notEmpty);
+	let root: HTMLElement;
+	let combobox: HTMLInputElement;
+	let listbox: HTMLDataListElement;
 
-	onMount(() => {
-		autocompleteI = new ComboboxAutocomplete(combobox, button, listbox, {
-			options,
-			updateOption: async (data) => {
-				const option = optionsWithDomAttributes.find((option) => option.value === data.option);
+	let hooks = autocompleteHelpers.setHooks({
+		updateState: async (input) => {
+			state = { ...state, ...input.state };
 
-				if (!option) {
-					return;
+			let shouldSelectActiveOption: boolean = false;
+
+			if (Object.hasOwn(input.state, 'isListboxOpen')) {
+				if (!state.isListboxOpen && input.reason === 'combobox keydown: Tab') {
+					shouldSelectActiveOption = true;
 				}
+			}
 
-				option.attributes = Object.assign(option.attributes, data.attributes);
+			if (Object.hasOwn(input.state, 'elementWithFocus')) {
+				if (state.elementWithFocus === 'listbox') {
+					const match = findComboboxValueMatch();
+					if (match) {
+						state.activeOption = match;
+					}
+				}
+			}
 
-				optionsWithDomAttributes = optionsWithDomAttributes;
+			if (Object.hasOwn(input.state, 'activeOption')) {
+				await handleActiveOptionChange();
+				if (input.reason.startsWith('combobox keydown: Arrow')) {
+					shouldSelectActiveOption = true;
+				}
+			}
 
-				await tick();
-				listbox.querySelector('[aria-selected=true]')?.scrollIntoView({
-					block: 'nearest'
+			if (shouldSelectActiveOption) {
+				comboboxValue = state.activeOption ?? '';
+			}
+
+			return state;
+		},
+		getFirstOption: async () => {
+			return getFirstOption();
+		},
+		getLastOption: async () => {
+			return getLastOption();
+		},
+		getNextOption: async (input) => {
+			return getNextOption(input.option);
+		},
+		getPreviousOption: async (input) => {
+			return getPreviousOption(input.option);
+		},
+		findOptionToActivate: async (input) => {
+			let optionToActivate: string | null = null;
+
+			if (state.activeOption != null && suggestions.indexOf(state.activeOption) >= 0) {
+				optionToActivate = state.activeOption;
+			} else {
+				optionToActivate = suggestions.at(0)!;
+			}
+
+			if (
+				optionToActivate != null &&
+				optionToActivate?.toLocaleLowerCase().startsWith(input.filter.toLowerCase())
+			) {
+				return optionToActivate;
+			}
+
+			return null;
+		},
+		setSelectedOption: async (input) => {
+			comboboxValue = input.option ?? '';
+			return state;
+		},
+		focusCombobox: async () => {
+			combobox.focus();
+		},
+		clearCombobox: async () => {
+			comboboxValue = '';
+			fetchSuggestions({ filter: comboboxValue });
+			return state;
+		},
+		showInlineSuggestion: async () => {
+			if (state.activeOption) {
+				combobox.value = comboboxValue = state.activeOption;
+				setComboboxSelectionRange({
+					start: filter.length,
+					end: state.activeOption.length
 				});
-			},
-			updateCombobox: (data) => {
-				comboboxA11yAttributes = data.attributes;
-			},
-			filterOptions: (data) => {
-				filteredOptions = options.filter((option) =>
-					option.toLowerCase().includes(data.filter.toLowerCase())
-				);
-				autocompleteI.filteredOptions = filteredOptions;
-			},
-			setSelectedOption: (data) => {
-				autocompleteI.selectedOption = data.option;
-			},
-			isOptionInView: (data) => {
-				const option = listbox.querySelector(`[value="${data.option}"]`);
+			}
 
-				if (!option) {
+			return state;
+		},
+		checkIfListboxCanOpen: async (input) => {
+			if (input.reason === 'combobox click' || input.reason === 'button click') {
+				const match = findComboboxValueMatch();
+				if (match) {
 					return false;
 				}
-
-				const bounding = option.getBoundingClientRect();
-				// const listboxRect = listbox.getBoundingClientRect();
-
-				return (
-					bounding.top >= 0 &&
-					bounding.left >= 0 &&
-					bounding.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-					bounding.right <= (window.innerWidth || document.documentElement.clientWidth)
-				);
-			},
-			isFilterMatching: (data) => {
-				return data.option?.toLocaleLowerCase().startsWith(data.filter.toLowerCase());
-			},
-			getOptionElId: (data) => {
-				return getOptionId(data.option);
-			},
-			setComboboxValue: (data) => {
-				combobox.value = value = data.value;
 			}
-		});
+
+			if (!isFetchDone) {
+				fetchSuggestions({ filter: comboboxValue });
+				return true;
+			} else {
+				return cachedSuggestions?.filter !== filter || !!suggestions.length;
+			}
+		}
 	});
+
+	let behavior = autocompleteHelpers.getBehavior({
+		state
+	});
+
+	let comboboxValue: string = '';
+	let filter: string = comboboxValue;
+
+	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
+	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({ state, activeOptionId });
+
+	let observer: CheckIfInViewObserver;
+
+	onMount(() => {
+		observer = createIntersectionObserver();
+	});
+
+	function createIntersectionObserver() {
+		const map = new Map<Element, (isIntersecting: boolean) => void>();
+
+		const instance = new IntersectionObserver(
+			(entries) => {
+				entries.forEach((entry) => {
+					if (map.has(entry.target)) {
+						const callback = map.get(entry.target)!;
+
+						callback(entry.isIntersecting);
+
+						map.delete(entry.target);
+					}
+
+					instance.unobserve(entry.target);
+				});
+			},
+			{
+				root: listbox,
+				threshold: 1
+			}
+		);
+
+		return {
+			instance,
+			checkElementIsInView: async (target: Element) => {
+				return new Promise<boolean>((resolve) => {
+					map.set(target, resolve);
+					instance.observe(target);
+				});
+			}
+		};
+	}
+
+	let errorMessage: string | null = null;
+	let loading: boolean = false;
+	let suggestions: string[] = [];
+	let cachedSuggestions:
+		| {
+				filter: string;
+				results: string[];
+		  }
+		| undefined = undefined;
+	let isFetchDone: boolean = false;
+	let lastRequestToken: any | undefined = undefined;
+	async function fetchSuggestions(input: { filter: string }) {
+		const token = {};
+
+		try {
+			isFetchDone = true;
+			errorMessage = null;
+
+			if (cachedSuggestions?.filter === input.filter) {
+				return cachedSuggestions.results;
+			}
+
+			let request: string = behavior.canFilterOptionsInListbox ? '' : input.filter;
+			loading = true;
+
+			lastRequestToken = token;
+			const response = await api.fetchSuggestions(request);
+
+			if (lastRequestToken !== token) {
+				return;
+			}
+
+			if (response.status === 404) {
+				throw new Error('No results found');
+			}
+
+			suggestions = await response.json();
+		} catch (e) {
+			const error = e as Error;
+			errorMessage = error.message;
+		} finally {
+			if (lastRequestToken !== token) {
+				return;
+			}
+
+			loading = false;
+			lastRequestToken = undefined;
+		}
+	}
+
+	function findComboboxValueMatch() {
+		return suggestions.find((option) => option === comboboxValue);
+	}
+
+	async function setComboboxSelectionRange(input: { start: number; end: number }) {
+		combobox.setSelectionRange(input.start, input.end);
+	}
+
+	async function scrollOptionIntoView(input: { option: string }) {
+		const optionEl = listbox.querySelector(`[value="${input.option}"]`);
+
+		if (!optionEl) {
+			return;
+		}
+
+		const isOptionInView = await observer.checkElementIsInView(optionEl);
+		if (!isOptionInView) {
+			optionEl.scrollIntoView({
+				block: 'nearest'
+			});
+		}
+	}
+
+	async function getFirstOption() {
+		return suggestions.at(0) ?? null;
+	}
+
+	async function getLastOption() {
+		return suggestions.at(suggestions.length - 1) ?? null;
+	}
+
+	async function getNextOption(option: string | null) {
+		if (!option) return await getFirstOption();
+
+		if (option === (await getLastOption())) {
+			return await getFirstOption();
+		}
+
+		const index = suggestions.indexOf(option);
+		return suggestions.at(index + 1) ?? null;
+	}
+
+	async function getPreviousOption(option: string | null) {
+		if (!option) return await getLastOption();
+
+		if (option === (await getFirstOption())) {
+			return await getLastOption();
+		}
+
+		const index = suggestions.indexOf(option);
+		return suggestions.at(index - 1) ?? null;
+	}
 
 	function getOptionId(option: string) {
 		return `cb1-option-${option}`;
 	}
+
+	async function handleActiveOptionChange() {
+		if (!state.activeOption) return;
+
+		scrollOptionIntoView({ option: state.activeOption });
+	}
+
+	async function handleRootFocusOut(event: FocusEvent) {
+		await autocompleteHelpers.handleRootFocusOut({ state, root, event, callbacks: hooks });
+	}
+
+	async function handleRootPointerOut() {
+		await autocompleteHelpers.handleRootPointerOut({ state, callbacks: hooks });
+	}
+
+	async function handleRootPointerOver() {
+		await autocompleteHelpers.handleRootPointerOver({ state, callbacks: hooks });
+	}
+
+	async function handleOptionClick(input: { option: string }) {
+		await autocompleteHelpers.handleOptionClick({
+			...input,
+			state,
+			callbacks: hooks
+		});
+	}
+
+	async function handleButtonClick() {
+		await autocompleteHelpers.handleButtonClick({
+			state,
+			callbacks: hooks
+		});
+	}
+
+	async function handleBackgroundPointerUp() {
+		await autocompleteHelpers.handleBackgroundPointerUp({ state, root, callbacks: hooks });
+	}
+
+	async function handleComboboxBlur() {
+		await autocompleteHelpers.handleComboboxBlur({ state, callbacks: hooks });
+	}
+
+	async function handleComboboxClick() {
+		await autocompleteHelpers.handleComboboxClick({
+			state,
+			callbacks: hooks
+		});
+	}
+
+	async function handleComboboxFocus() {
+		await autocompleteHelpers.handleComboboxFocus({
+			state,
+			callbacks: hooks
+		});
+	}
+
+	async function handleComboboxKeyDown(event: KeyboardEvent) {
+		await autocompleteHelpers.handleComboboxKeyDown({
+			event,
+			state,
+			callbacks: hooks
+		});
+	}
+
+	async function handleComboboxInput(e: Event) {
+		const event = e as InputEvent;
+		const target = event.target as HTMLInputElement;
+
+		comboboxValue = target.value;
+		fetchSuggestions({ filter: comboboxValue }).then((e) => console.warn(e));
+
+		await autocompleteHelpers.handleComboboxInput({
+			state,
+			event,
+			comboboxValue,
+			callbacks: hooks
+		});
+	}
+
+	interface CheckIfInViewObserver {
+		instance: IntersectionObserver;
+		checkElementIsInView: (target: Element) => Promise<boolean>;
+	}
 </script>
 
+<svelte:window on:pointerup={handleBackgroundPointerUp} />
+
 <div>
-	{autocompleteI?.selectedOption}
-	{value}
+	{comboboxValue}
+	{suggestions.length}
+	{!!errorMessage}
+	{loading}
 	<label for="cb1-input">State</label>
-	<div class="combobox combobox-list">
-		<div class="group">
+	<div
+		bind:this={root}
+		class="combobox combobox-list"
+		on:focusout={handleRootFocusOut}
+		on:pointerout={handleRootPointerOut}
+		on:pointerover={handleRootPointerOver}
+	>
+		<div class="group" class:focus={state.elementWithFocus === 'combobox'}>
 			<input
 				bind:this={combobox}
 				id="cb1-input"
 				class="cb_edit"
-				{value}
+				value={comboboxValue}
 				type="text"
 				role="combobox"
+				aria-expanded={a11yAttributes.combobox['aria-expanded']}
 				aria-autocomplete={autocomplete}
-				aria-expanded="false"
 				aria-controls="cb1-listbox"
-				{...comboboxA11yAttributes}
-				on:input={(e) => autocompleteI.onComboboxInput(e)}
+				aria-activedescendant={a11yAttributes.combobox['aria-activedescendant']}
+				on:input={handleComboboxInput}
+				on:keydown={handleComboboxKeyDown}
+				on:click={handleComboboxClick}
+				on:focus={handleComboboxFocus}
+				on:blur={handleComboboxBlur}
 			/>
 			<button
-				bind:this={button}
 				id="cb1-button"
 				tabindex="-1"
 				aria-label="States"
-				aria-expanded="false"
+				aria-expanded={a11yAttributes.button['aria-expanded']}
 				aria-controls="cb1-listbox"
+				on:click={handleButtonClick}
 			>
 				<svg
 					width="18"
@@ -204,19 +420,31 @@
 				</svg>
 			</button>
 		</div>
-		<datalist bind:this={listbox} id="cb1-listbox" aria-label="States">
-			{#each filteredOptionsWithDomAttributes as option}
-				<option
-					id={getOptionId(option.value)}
-					value={option.value}
-					{...option.attributes}
-					on:click={() => autocompleteI.onOptionClick({ option: option.value })}
-					on:pointerover={() => autocompleteI.onOptionPointerover()}
-					on:pointerout={() => autocompleteI.onOptionPointerout()}
-				>
-					{option.value}
-				</option>
-			{/each}
+		<datalist
+			bind:this={listbox}
+			id="cb1-listbox"
+			class:focus={state.elementWithFocus === 'listbox'}
+			style:display={state.isListboxOpen ? 'block' : 'none'}
+			aria-label="States"
+		>
+			{#if errorMessage}
+				<option disabled>{errorMessage}</option>
+			{:else if loading}
+				<option disabled>Loading...</option>
+			{:else if suggestions.length}
+				{#each suggestions as suggestion}
+					<option
+						id={getOptionId(suggestion)}
+						value={suggestion}
+						aria-selected={state.activeOption === suggestion
+							? a11yAttributes.activeOption['aria-selected']
+							: a11yAttributes.otherOptions['aria-selected']}
+						on:click={() => handleOptionClick({ option: suggestion })}
+					>
+						{suggestion}
+					</option>
+				{/each}
+			{/if}
 		</datalist>
 	</div>
 </div>
