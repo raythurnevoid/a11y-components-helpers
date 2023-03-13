@@ -1,16 +1,16 @@
 export async function fetchSuggestions(filter: string) {
 	return new Promise<Response>((resolve) => {
 		setTimeout(() => {
-			const results = options
-				.filter((option) => (filter ? option.toLowerCase().includes(filter.toLowerCase()) : true))
-				.slice(0, 10);
+			const results = options.filter((option) =>
+				filter ? option.toLowerCase().includes(filter.toLowerCase()) : true
+			);
 
 			if (results.length === 0) {
 				resolve(new Response('', { status: 404 }));
 			}
 
 			resolve(new Response(JSON.stringify(results), { status: 200 }));
-		}, 2500);
+		}, 200);
 	});
 }
 

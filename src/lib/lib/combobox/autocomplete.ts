@@ -7,132 +7,127 @@ export async function handleComboboxInput(input: {
 		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
 		findOptionToActivate?: Hooks['findOptionToActivate'];
 		showInlineSuggestion?: Hooks['showInlineSuggestion'];
+		prepareOptions?: Hooks['prepareOptions'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
-	const isInsertOrDelete =
-		input.event.inputType.startsWith('insert') || input.event.inputType.startsWith('delete');
-
-	if (isInsertOrDelete) {
+	if (input.event.inputType.startsWith('insert') || input.event.inputType.startsWith('delete')) {
 		input.event.preventDefault();
 	}
 
-	let listboxCanOpen = await input.callbacks.checkIfListboxCanOpen({
-		reason: 'combobox input'
-	});
 	state = await collectStateUpdates(
 		state,
 		async (updateState) => {
-			if (listboxCanOpen) {
-				if (state.elementWithFocus !== 'combobox') {
-					await updateState({
-						state: {
-							elementWithFocus: 'combobox'
-						}
-					});
-				}
+			if (state.elementWithFocus !== 'combobox') {
+				await updateState({
+					state: {
+						elementWithFocus: 'combobox'
+					}
+				});
+			}
 
+			let listboxCanOpen = await input.callbacks.checkIfListboxCanOpen({
+				reason: 'combobox input'
+			});
+
+			if (listboxCanOpen) {
 				if (!state.isListboxOpen) {
 					await updateStateOnOpen({
 						state,
 						callbacks: { updateState }
 					});
 				}
-			} else if (state.isListboxOpen) {
-				await updateStateOnClose({
-					force: false,
-					state,
-					callbacks: { updateState }
-				});
 			}
 		},
-		(state) =>
-			input.callbacks.updateState({
-				state,
+		async (statePatch) => {
+			return await input.callbacks.updateState({
+				state: statePatch,
 				reason: 'combobox input'
-			})
+			});
+		}
 	);
 
-	if (state.autocomplete !== 'list' && state.autocomplete !== 'both') {
-		return state;
+	if (!state.isListboxOpen || (state.autocomplete !== 'list' && state.autocomplete !== 'both')) {
+		return;
 	}
 
-	if (listboxCanOpen) {
-		let optionToActivate: string | null = null;
-		if (input.callbacks.findOptionToActivate) {
-			optionToActivate = await input.callbacks.findOptionToActivate({
-				filter: input.comboboxValue,
-				reason: 'combobox input'
-			});
-		}
+	let optionsAreReady =
+		(await input.callbacks.prepareOptions?.({
+			reason: 'combobox input'
+		})) ?? true;
 
-		if (optionToActivate) {
-			state = await input.callbacks.updateState({
-				state: { activeOption: optionToActivate },
-				reason: 'combobox input: filter match'
-			});
+	if (!optionsAreReady) return;
 
-			if (
-				(state.autocomplete === 'both' || state.elementWithFocus === 'listbox') &&
-				input.event.inputType.startsWith('insert')
-			) {
-				if (input.callbacks.showInlineSuggestion) {
-					state = await input.callbacks.showInlineSuggestion({
-						reason: 'combobox input'
-					});
-				}
-			}
-		} else if (state.activeOption != null) {
+	if (input.callbacks.findOptionToActivate) {
+		const optionToActivate = await input.callbacks.findOptionToActivate({
+			filter: input.comboboxValue,
+			reason: 'combobox input'
+		});
+
+		if (state.activeOption != optionToActivate) {
 			state = await input.callbacks.updateState({
-				state: { activeOption: null },
-				reason: 'combobox input: filter doesnt match'
+				state: { activeOption: optionToActivate ?? null },
+				reason: optionToActivate
+					? 'combobox input: filter match'
+					: 'combobox input: filter doesnt match'
 			});
 		}
 	}
 
-	return state;
+	if (
+		state.activeOption &&
+		(state.autocomplete === 'both' || state.elementWithFocus === 'listbox') &&
+		input.event.inputType.startsWith('insert') &&
+		input.callbacks.showInlineSuggestion
+	) {
+		input.callbacks.showInlineSuggestion({
+			reason: 'combobox input'
+		});
+	}
 }
 
 export async function handleComboboxKeyDown(input: {
 	event: KeyboardEvent;
 	state: State;
+	comboboxValue: string;
 	callbacks: {
 		updateState: Hooks['updateState'];
 		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
-		getFirstOption: Hooks['getFirstOption'];
 		getPreviousOption: Hooks['getPreviousOption'];
 		getNextOption: Hooks['getNextOption'];
-		getLastOption: Hooks['getLastOption'];
+		findOptionToActivate?: Hooks['findOptionToActivate'];
+		prepareOptions?: Hooks['prepareOptions'];
 		setSelectedOption?: Hooks['setSelectedOption'];
 		clearCombobox?: Hooks['clearCombobox'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	let shouldPreventDefault = false;
 
 	if (input.event.ctrlKey) {
-		return state;
+		return;
 	}
 
 	if (input.event.shiftKey && input.event.key !== 'Tab') {
-		return state;
+		return;
 	}
 
 	switch (input.event.key) {
 		case 'Enter': {
-			if (state.elementWithFocus === 'listbox' && input.callbacks.setSelectedOption) {
-				state = await input.callbacks.setSelectedOption({
-					option: state.activeOption,
-					reason: 'combobox keydown: Enter'
-				});
-			}
+			const currentActiveOption = state.activeOption;
 
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
-					await updateStateOnClose({ force: true, state, callbacks: { updateState } });
+					await updateStateOnClose({
+						force: true,
+						state,
+						callbacks: {
+							updateState
+						}
+					});
 					await updateState({
 						state: {
 							elementWithFocus: 'combobox'
@@ -146,76 +141,100 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
+			// if (state.elementWithFocus === 'listbox' && input.callbacks.setSelectedOption) {
+			// 	await input.callbacks.setSelectedOption({
+			// 		option: state.activeOption,
+			// 		reason: 'combobox keydown: Enter'
+			// 	});
+			// }
+
+			if (currentActiveOption && input.callbacks.setSelectedOption) {
+				await input.callbacks.setSelectedOption({
+					option: currentActiveOption,
+					reason: 'combobox keydown: Enter'
+				});
+			}
+
 			shouldPreventDefault = true;
 			break;
 		}
 
 		case 'Down':
 		case 'ArrowDown': {
-			state = await collectStateUpdates(
-				state,
-				async (updateState) => {
-					if (
-						state.elementWithFocus !== 'listbox' &&
-						!state.isListboxOpen &&
-						(await input.callbacks.checkIfListboxCanOpen({
-							reason: 'combobox keydown: ArrowUp'
-						}))
-					) {
-						state = await updateStateOnOpen({
+			if (
+				!state.isListboxOpen &&
+				(await input.callbacks.checkIfListboxCanOpen({
+					reason: 'combobox keydown: ArrowDown'
+				}))
+			) {
+				state = await collectStateUpdates(
+					state,
+					async (updateState) => {
+						await updateStateOnOpen({
 							state,
 							callbacks: {
 								updateState
 							}
 						});
+					},
+					(state) =>
+						input.callbacks.updateState({
+							state,
+							reason: 'combobox keydown: ArrowDown'
+						})
+				);
 
-						state = await updateState({
-							state: {
-								elementWithFocus: 'listbox'
-							}
+				let optionsAreReady =
+					(await input.callbacks.prepareOptions?.({
+						reason: 'combobox keydown: ArrowUp'
+					})) ?? true;
+
+				if (!optionsAreReady || input.event.altKey) return;
+
+				if (input.callbacks.findOptionToActivate) {
+					const optionToActivate = await input.callbacks.findOptionToActivate({
+						filter: input.comboboxValue,
+						reason: 'combobox input'
+					});
+
+					if (state.activeOption != optionToActivate) {
+						state = await input.callbacks.updateState({
+							state: { activeOption: optionToActivate ?? null },
+							reason: optionToActivate
+								? 'combobox input: filter match'
+								: 'combobox input: filter doesnt match'
 						});
-					} else if (state.elementWithFocus !== 'listbox' && state.isListboxOpen) {
-						state = await updateState({
+					}
+				}
+			}
+
+			state = await collectStateUpdates(
+				state,
+				async (updateState) => {
+					if (state.elementWithFocus !== 'listbox') {
+						await updateState({
 							state: {
 								elementWithFocus: 'listbox'
 							}
 						});
 					}
 
-					if (input.event.altKey) {
-						return;
-					}
-
-					if (!state.activeOption) {
-						const firstOption = await input.callbacks.getFirstOption({
-							reason: 'combobox keydown: ArrowDown'
+					const nextOption = await input.callbacks.getNextOption({
+						option: state.activeOption,
+						reason: 'combobox keydown: ArrowDown'
+					});
+					if (nextOption) {
+						await updateState({
+							state: {
+								activeOption: nextOption
+							}
 						});
-						if (firstOption) {
-							state = await updateState({
-								state: {
-									elementWithFocus: 'listbox',
-									activeOption: firstOption
-								}
-							});
-						}
-					} else {
-						const nextOption = await input.callbacks.getNextOption({
-							option: state.activeOption,
-							reason: 'combobox keydown: ArrowDown'
-						});
-						if (nextOption) {
-							state = await updateState({
-								state: {
-									activeOption: nextOption
-								}
-							});
-						}
 					}
 				},
 				(state) =>
 					input.callbacks.updateState({
 						state,
-						reason: 'combobox keydown: ArrowDown'
+						reason: 'combobox keydown: ArrowUp'
 					})
 			);
 
@@ -225,64 +244,74 @@ export async function handleComboboxKeyDown(input: {
 
 		case 'Up':
 		case 'ArrowUp': {
-			state = await collectStateUpdates(
-				state,
-				async (updateState) => {
-					if (
-						state.elementWithFocus !== 'listbox' &&
-						!state.isListboxOpen &&
-						(await input.callbacks.checkIfListboxCanOpen({
-							reason: 'combobox keydown: ArrowUp'
-						}))
-					) {
-						state = await updateStateOnOpen({
+			if (
+				!state.isListboxOpen &&
+				(await input.callbacks.checkIfListboxCanOpen({
+					reason: 'combobox keydown: ArrowUp'
+				}))
+			) {
+				state = await collectStateUpdates(
+					state,
+					async (updateState) => {
+						await updateStateOnOpen({
 							state,
 							callbacks: {
 								updateState
 							}
 						});
+					},
+					(state) =>
+						input.callbacks.updateState({
+							state,
+							reason: 'combobox keydown: ArrowUp'
+						})
+				);
 
-						state = await updateState({
-							state: {
-								elementWithFocus: 'listbox'
-							}
+				let optionsAreReady =
+					(await input.callbacks.prepareOptions?.({
+						reason: 'combobox keydown: ArrowUp'
+					})) ?? true;
+
+				if (!optionsAreReady || input.event.altKey) return;
+
+				if (input.callbacks.findOptionToActivate) {
+					const optionToActivate = await input.callbacks.findOptionToActivate({
+						filter: input.comboboxValue,
+						reason: 'combobox keydown: ArrowUp'
+					});
+
+					if (state.activeOption != optionToActivate) {
+						state = await input.callbacks.updateState({
+							state: { activeOption: optionToActivate ?? null },
+							reason: optionToActivate
+								? 'combobox keydown: ArrowUp: filter match'
+								: 'combobox keydown: ArrowUp: filter doesnt match'
 						});
-					} else if (state.elementWithFocus !== 'listbox' && state.isListboxOpen) {
-						state = await updateState({
+					}
+				}
+			}
+
+			state = await collectStateUpdates(
+				state,
+				async (updateState) => {
+					if (state.elementWithFocus !== 'listbox') {
+						await updateState({
 							state: {
 								elementWithFocus: 'listbox'
 							}
 						});
 					}
 
-					if (input.event.altKey) {
-						return;
-					}
-
-					if (!state.activeOption) {
-						const lastOption = await input.callbacks.getLastOption({
-							reason: 'combobox keydown: ArrowUp'
+					const prevOption = await input.callbacks.getPreviousOption({
+						option: state.activeOption,
+						reason: 'combobox keydown: ArrowUp'
+					});
+					if (prevOption) {
+						await updateState({
+							state: {
+								activeOption: prevOption
+							}
 						});
-						if (lastOption) {
-							state = await updateState({
-								state: {
-									elementWithFocus: 'listbox',
-									activeOption: lastOption
-								}
-							});
-						}
-					} else {
-						const prevOption = await input.callbacks.getPreviousOption({
-							option: state.activeOption,
-							reason: 'combobox keydown: ArrowUp'
-						});
-						if (prevOption) {
-							state = await updateState({
-								state: {
-									activeOption: prevOption
-								}
-							});
-						}
 					}
 				},
 				(state) =>
@@ -317,7 +346,7 @@ export async function handleComboboxKeyDown(input: {
 						});
 					} else {
 						if (input.callbacks.clearCombobox) {
-							state = await input.callbacks.clearCombobox({
+							await input.callbacks.clearCombobox({
 								reason: 'combobox keydown: Esc'
 							});
 						}
@@ -335,6 +364,8 @@ export async function handleComboboxKeyDown(input: {
 		}
 
 		case 'Tab': {
+			const currentActiveOption = state.activeOption;
+
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -353,13 +384,9 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
-			if (
-				state.elementWithFocus === 'listbox' &&
-				state.activeOption &&
-				input.callbacks.setSelectedOption
-			) {
-				state = await input.callbacks.setSelectedOption({
-					option: state.activeOption,
+			if (currentActiveOption && input.callbacks.setSelectedOption) {
+				await input.callbacks.setSelectedOption({
+					option: currentActiveOption,
 					reason: 'combobox keydown: Tab'
 				});
 			}
@@ -371,8 +398,6 @@ export async function handleComboboxKeyDown(input: {
 	if (shouldPreventDefault) {
 		input.event.preventDefault();
 	}
-
-	return state;
 }
 
 export async function handleComboboxFocus(input: {
@@ -380,7 +405,7 @@ export async function handleComboboxFocus(input: {
 	callbacks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	state = await input.callbacks.updateState({
@@ -389,8 +414,6 @@ export async function handleComboboxFocus(input: {
 		},
 		reason: 'combobox focus'
 	});
-
-	return state;
 }
 
 export async function handleComboboxBlur(input: {
@@ -398,73 +421,103 @@ export async function handleComboboxBlur(input: {
 	callbacks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
+	let state = input.state;
+
+	// state = await collectStateUpdates(
+	// 	state,
+	// 	async (updateState) => {
+	// 		await updateStateOnRemoveVisualFocus({
+	// 			state,
+	// 			callbacks: {
+	// 				updateState
+	// 			}
+	// 		});
+	// 	},
+	// 	(state) =>
+	// 		input.callbacks.updateState({
+	// 			state,
+	// 			reason: 'combobox blur'
+	// 		})
+	// );
+}
+
+export async function handleComboboxClick(input: {
+	state: State;
+	comboboxValue: string;
+	callbacks: {
+		updateState: Hooks['updateState'];
+		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
+		prepareOptions?: Hooks['prepareOptions'];
+		findOptionToActivate?: Hooks['findOptionToActivate'];
+	};
+}): Promise<void> {
 	let state = input.state;
 
 	state = await collectStateUpdates(
 		state,
 		async (updateState) => {
-			await updateStateOnRemoveVisualFocus({
-				state,
-				callbacks: {
-					updateState
-				}
-			});
-		},
-		(state) =>
-			input.callbacks.updateState({
-				state,
-				reason: 'combobox blur'
-			})
-	);
-
-	return state;
-}
-
-export async function handleComboboxClick(input: {
-	state: State;
-	callbacks: {
-		updateState: Hooks['updateState'];
-		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
-	};
-}): Promise<State> {
-	let state = input.state;
-
-	if (
-		!state.isListboxOpen &&
-		(await input.callbacks.checkIfListboxCanOpen({
-			reason: 'combobox click'
-		}))
-	) {
-		state = await collectStateUpdates(
-			state,
-			async (updateState) => {
+			if (
+				!state.isListboxOpen &&
+				(await input.callbacks.checkIfListboxCanOpen({
+					reason: 'combobox click'
+				}))
+			) {
 				await updateStateOnOpen({
 					state,
 					callbacks: {
 						updateState
 					}
 				});
-			},
-			(state) =>
-				input.callbacks.updateState({
-					state,
-					reason: 'combobox click'
-				})
-		);
-	}
+			}
 
-	return state;
+			if (state.elementWithFocus !== 'combobox') {
+				await updateState({
+					state: {
+						elementWithFocus: 'combobox'
+					}
+				});
+			}
+		},
+		(state) =>
+			input.callbacks.updateState({
+				state,
+				reason: 'combobox click'
+			})
+	);
+
+	await input.callbacks.prepareOptions?.({
+		reason: 'combobox click'
+	});
+
+	if (input.callbacks.findOptionToActivate) {
+		const optionToActivate = await input.callbacks.findOptionToActivate({
+			filter: input.comboboxValue,
+			reason: 'combobox click'
+		});
+
+		if (state.activeOption != optionToActivate) {
+			state = await input.callbacks.updateState({
+				state: { activeOption: optionToActivate ?? null },
+				reason: optionToActivate
+					? 'combobox click: filter match'
+					: 'combobox click: filter doesnt match'
+			});
+		}
+	}
 }
 
 export async function handleButtonClick(input: {
 	state: State;
+	comboboxValue: string;
 	callbacks: {
 		updateState: Hooks['updateState'];
-		focusCombobox?: Hooks['focusCombobox'];
 		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
+		focusCombobox?: Hooks['focusCombobox'];
+		prepareOptions?: Hooks['prepareOptions'];
+		findOptionToActivate?: Hooks['findOptionToActivate'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	state = await collectStateUpdates(
@@ -483,7 +536,7 @@ export async function handleButtonClick(input: {
 					reason: 'button click'
 				})
 			) {
-				state = await updateStateOnOpen({
+				await updateStateOnOpen({
 					state,
 					callbacks: {
 						updateState
@@ -504,43 +557,33 @@ export async function handleButtonClick(input: {
 		});
 	}
 
-	return state;
+	if (state.isListboxOpen) {
+		await input.callbacks.prepareOptions?.({
+			reason: 'button click'
+		});
+
+		if (input.callbacks.findOptionToActivate) {
+			const optionToActivate = await input.callbacks.findOptionToActivate({
+				filter: input.comboboxValue,
+				reason: 'button click'
+			});
+
+			if (state.activeOption != optionToActivate) {
+				state = await input.callbacks.updateState({
+					state: { activeOption: optionToActivate ?? null },
+					reason: optionToActivate
+						? 'button click: filter match'
+						: 'button click: filter doesnt match'
+				});
+			}
+		}
+	}
+
+	return;
 }
 
-export async function handleRootPointerOut(input: {
-	state: State;
-	callbacks: {
-		updateState: Hooks['updateState'];
-	};
-}): Promise<State> {
-	let state = input.state;
-
-	state = await input.callbacks.updateState({
-		state: {
-			hasHover: false
-		},
-		reason: 'root pointerout'
-	});
-
-	return state;
-}
-
-export async function handleRootPointerOver(input: {
-	state: State;
-	callbacks: {
-		updateState: Hooks['updateState'];
-	};
-}): Promise<State> {
-	let state = input.state;
-
-	state = await input.callbacks.updateState({
-		state: {
-			hasHover: true
-		},
-		reason: 'root pointerover'
-	});
-
-	return state;
+export async function handleListboxClick(input: { event: Event }) {
+	input.event?.preventDefault();
 }
 
 export async function handleRootFocusOut(input: {
@@ -550,11 +593,11 @@ export async function handleRootFocusOut(input: {
 	callbacks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	if (input.root.contains(input.event.target as HTMLElement)) {
-		return state;
+		return;
 	}
 
 	state = await collectStateUpdates(
@@ -567,12 +610,6 @@ export async function handleRootFocusOut(input: {
 					updateState
 				}
 			});
-
-			await updateState({
-				state: {
-					hasHover: false
-				}
-			});
 		},
 		(state) =>
 			input.callbacks.updateState({
@@ -580,8 +617,6 @@ export async function handleRootFocusOut(input: {
 				reason: 'root focusout'
 			})
 	);
-
-	return state;
 }
 
 export async function handleOptionClick(input: {
@@ -591,7 +626,7 @@ export async function handleOptionClick(input: {
 		updateState: Hooks['updateState'];
 		setSelectedOption?: Hooks['setSelectedOption'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	state = await collectStateUpdates(
@@ -613,26 +648,26 @@ export async function handleOptionClick(input: {
 	);
 
 	if (input.callbacks.setSelectedOption) {
-		state = await input.callbacks.setSelectedOption({
+		await input.callbacks.setSelectedOption({
 			option: input.option,
-			reason: 'click'
+			reason: 'option click'
 		});
 	}
-
-	return state;
 }
 
 export async function handleBackgroundPointerUp(input: {
 	state: State;
-	root: HTMLElement;
+	event: Event;
+	rootEl: HTMLElement;
 	callbacks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
-	if (input.root.contains(document.activeElement)) {
-		return state;
+	const target = input.event.target as HTMLElement;
+	if (input.rootEl.contains(target)) {
+		return;
 	}
 
 	state = await collectStateUpdates(
@@ -641,14 +676,12 @@ export async function handleBackgroundPointerUp(input: {
 			await updateStateOnRemoveVisualFocus({ state, callbacks: { updateState } });
 			await updateStateOnClose({ force: true, state, callbacks: { updateState } });
 		},
-		(state) =>
+		async (state) =>
 			input.callbacks.updateState({
 				state,
 				reason: 'background pointerup'
 			})
 	);
-
-	return state;
 }
 
 async function updateStateOnRemoveVisualFocus(input: {
@@ -677,12 +710,11 @@ async function updateStateOnClose(input: {
 }): Promise<State> {
 	let state = input.state;
 
+	console.warn('ASD', state);
+
 	if (
 		state.isListboxOpen &&
-		(input.force ||
-			(state.elementWithFocus !== 'listbox' &&
-				state.elementWithFocus !== 'combobox' &&
-				!state.hasHover))
+		(input.force || (state.elementWithFocus !== 'listbox' && state.elementWithFocus !== 'combobox'))
 	) {
 		state = await input.callbacks.updateState({
 			state: {
@@ -737,11 +769,19 @@ async function updateStateOnOpen(input: {
 
 export async function open(input: {
 	state: State;
+	comboboxValue: string;
 	callbacks: {
 		updateState: Hooks['updateState'];
+		checkIfListboxCanOpen?: Hooks['checkIfListboxCanOpen'];
+		prepareOptions?: Hooks['prepareOptions'];
+		findOptionToActivate?: Hooks['findOptionToActivate'];
 	};
 }): Promise<State> {
 	let state = input.state;
+
+	if (!(await input.callbacks.checkIfListboxCanOpen?.({ reason: 'open' }))) {
+		return state;
+	}
 
 	state = await collectStateUpdates(
 		state,
@@ -753,6 +793,24 @@ export async function open(input: {
 		},
 		async (state) => input.callbacks.updateState({ state, reason: 'open' })
 	);
+
+	await input.callbacks.prepareOptions?.({
+		reason: 'open'
+	});
+
+	if (input.callbacks.findOptionToActivate) {
+		const optionToActivate = await input.callbacks.findOptionToActivate({
+			filter: input.comboboxValue,
+			reason: 'open'
+		});
+
+		if (state.activeOption != optionToActivate) {
+			state = await input.callbacks.updateState({
+				state: { activeOption: optionToActivate ?? null },
+				reason: optionToActivate ? 'open: filter match' : 'open: filter doesnt match'
+			});
+		}
+	}
 
 	return state;
 }
@@ -828,30 +886,47 @@ type UpdateStateReason =
 	| 'root pointerout'
 	| 'root focusout'
 	| 'combobox input'
+	| 'combobox input: delete'
 	| 'combobox input: filter match'
 	| 'combobox input: filter doesnt match'
 	| 'combobox keydown: ArrowDown'
+	| 'combobox keydown: ArrowDown: filter match'
+	| 'combobox keydown: ArrowDown: filter doesnt match'
 	| 'combobox keydown: ArrowUp'
+	| 'combobox keydown: ArrowUp: filter match'
+	| 'combobox keydown: ArrowUp: filter doesnt match'
 	| 'combobox keydown: Enter'
 	| 'combobox keydown: Esc'
 	| 'combobox keydown: Tab'
 	| 'combobox focus'
 	| 'combobox blur'
 	| 'combobox click'
+	| 'combobox click: filter match'
+	| 'combobox click: filter doesnt match'
 	| 'button click'
+	| 'button click: filter match'
+	| 'button click: filter doesnt match'
 	| 'option click'
 	| 'background pointerup'
 	| 'close'
-	| 'open';
+	| 'open'
+	| 'open: filter match'
+	| 'open: filter doesnt match';
 export type SetSelectedOptionReason =
-	| 'click'
 	| 'combobox keydown: Enter'
 	| 'combobox keydown: Tab'
-	| 'combobox keydown: Esc';
+	| 'combobox keydown: Esc'
+	| 'option click';
 export type ClearComboboxReason = 'combobox keydown: Esc';
 export type FocusComboboxReason = 'button click';
 export type ShowInlineSuggestionReason = 'combobox input';
-export type FindOptionToActivatenReason = 'combobox input';
+export type FindOptionToActivatenReason =
+	| 'combobox input'
+	| 'combobox keydown: ArrowDown'
+	| 'combobox keydown: ArrowUp'
+	| 'combobox click'
+	| 'button click'
+	| 'open';
 export type GetFirstOptionReason = 'combobox keydown: ArrowDown';
 export type GetPreviousOptionReason = 'combobox keydown: ArrowUp';
 export type GetNextOptionReason = 'combobox keydown: ArrowDown';
@@ -861,37 +936,43 @@ export type CheckIfListboxCanOpenReason =
 	| 'combobox input'
 	| 'combobox click'
 	| 'combobox keydown: ArrowUp'
-	| 'combobox keydown: ArrowDown';
+	| 'combobox keydown: ArrowDown'
+	| 'open';
+export type PrepareOptionsReason =
+	| 'combobox input'
+	| 'combobox keydown: ArrowDown'
+	| 'combobox keydown: ArrowUp'
+	| 'combobox click'
+	| 'button click'
+	| 'open';
 
 export interface Hooks {
 	updateState: (input: UpdateStateInput) => Promise<State>;
 	checkIfListboxCanOpen: (input: { reason: CheckIfListboxCanOpenReason }) => Promise<boolean>;
-	getFirstOption: (input: { reason: GetFirstOptionReason }) => Promise<string | null>;
+	prepareOptions?: (input: { reason: PrepareOptionsReason }) => Promise<boolean>;
 	getPreviousOption: (input: {
 		option: State['activeOption'];
 		reason: GetPreviousOptionReason;
-	}) => Promise<string | null>;
+	}) => Promise<string | null | undefined>;
 	getNextOption: (input: {
 		option: State['activeOption'];
 		reason: GetNextOptionReason;
-	}) => Promise<string | null>;
-	getLastOption: (input: { reason: GetLastOptionReason }) => Promise<string | null>;
+	}) => Promise<string | null | undefined>;
 	findOptionToActivate?: (input: {
 		filter: string;
 		reason: FindOptionToActivatenReason;
-	}) => Promise<string | null>;
+	}) => Promise<string | null | undefined>;
 	setSelectedOption?: (input: {
 		option: string | null;
 		reason: SetSelectedOptionReason;
-	}) => Promise<State>;
-	clearCombobox?: (input: { reason: ClearComboboxReason }) => Promise<State>;
+	}) => Promise<void>;
+	clearCombobox?: (input: { reason: ClearComboboxReason }) => Promise<void>;
 	focusCombobox?: (input: { reason: FocusComboboxReason }) => Promise<void>;
-	showInlineSuggestion?: (input: { reason: ShowInlineSuggestionReason }) => Promise<State>;
+	showInlineSuggestion?: (input: { reason: ShowInlineSuggestionReason }) => Promise<void>;
 }
 
 export interface State {
 	autocomplete: 'none' | 'both' | 'list';
-	hasHover: boolean;
 	isListboxOpen: boolean;
 	elementWithFocus: 'combobox' | 'listbox' | null;
 	activeOption: string | null;

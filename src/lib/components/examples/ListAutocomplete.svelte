@@ -1,61 +1,40 @@
 <script lang="ts">
-	import * as autocompleteHelpers from '$lib/lib/combobox/list-autocomplete.js';
+	import * as autocompleteHelpers from '$lib/lib/combobox/autocomplete.js';
 	import * as api from './suggestions.js';
 	import { onMount } from 'svelte';
-	import './ListAutocomplete.css';
+	import { debounce } from '$lib/debounce.js';
+	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
 
 	export let autocomplete: 'list' | 'both' | 'none';
+
 	export let state = autocompleteHelpers.setState({
 		autocomplete,
-		hasHover: false,
 		isListboxOpen: false,
 		elementWithFocus: null,
 		activeOption: null
 	});
 
-	let root: HTMLElement;
-	let combobox: HTMLInputElement;
-	let listbox: HTMLDataListElement;
+	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
 
 	let hooks = autocompleteHelpers.setHooks({
 		updateState: async (input) => {
 			state = { ...state, ...input.state };
 
-			let shouldSelectActiveOption: boolean = false;
-
-			if (Object.hasOwn(input.state, 'isListboxOpen')) {
-				if (!state.isListboxOpen && input.reason === 'combobox keydown: Tab') {
-					shouldSelectActiveOption = true;
-				}
-			}
-
-			if (Object.hasOwn(input.state, 'elementWithFocus')) {
-				if (state.elementWithFocus === 'listbox') {
-					const match = findComboboxValueMatch();
-					if (match) {
-						state.activeOption = match;
-					}
-				}
-			}
-
-			if (Object.hasOwn(input.state, 'activeOption')) {
-				await handleActiveOptionChange();
-				if (input.reason.startsWith('combobox keydown: Arrow')) {
-					shouldSelectActiveOption = true;
-				}
-			}
-
-			if (shouldSelectActiveOption) {
-				comboboxValue = state.activeOption ?? '';
+			if (input.state.activeOption) {
+				handleActiveOptionChange();
 			}
 
 			return state;
 		},
-		getFirstOption: async () => {
-			return getFirstOption();
-		},
-		getLastOption: async () => {
-			return getLastOption();
+		prepareOptions: async () => {
+			let result = true;
+
+			filter = comboboxValue;
+			result = await fetchSuggestions({
+				filter: behavior.canFilterOptionsInListbox ? filter : ''
+			});
+
+			return result;
 		},
 		getNextOption: async (input) => {
 			return getNextOption(input.option);
@@ -64,60 +43,43 @@
 			return getPreviousOption(input.option);
 		},
 		findOptionToActivate: async (input) => {
+			if (!suggestions || !input.filter) return;
+
 			let optionToActivate: string | null = null;
 
 			if (state.activeOption != null && suggestions.indexOf(state.activeOption) >= 0) {
 				optionToActivate = state.activeOption;
 			} else {
-				optionToActivate = suggestions.at(0)!;
+				const firstSuggestion = suggestions.at(0)!;
+
+				if (firstSuggestion?.toLocaleLowerCase().startsWith(input.filter.toLowerCase())) {
+					optionToActivate = firstSuggestion;
+				}
 			}
 
-			if (
-				optionToActivate != null &&
-				optionToActivate?.toLocaleLowerCase().startsWith(input.filter.toLowerCase())
-			) {
-				return optionToActivate;
-			}
-
-			return null;
+			return optionToActivate;
 		},
 		setSelectedOption: async (input) => {
+			console.log(input);
 			comboboxValue = input.option ?? '';
-			return state;
 		},
 		focusCombobox: async () => {
-			combobox.focus();
+			comboboxEl.focus();
 		},
 		clearCombobox: async () => {
 			comboboxValue = '';
-			fetchSuggestions({ filter: comboboxValue });
-			return state;
 		},
 		showInlineSuggestion: async () => {
 			if (state.activeOption) {
-				combobox.value = comboboxValue = state.activeOption;
+				comboboxEl.value = comboboxValue = state.activeOption;
 				setComboboxSelectionRange({
 					start: filter.length,
 					end: state.activeOption.length
 				});
 			}
-
-			return state;
 		},
-		checkIfListboxCanOpen: async (input) => {
-			if (input.reason === 'combobox click' || input.reason === 'button click') {
-				const match = findComboboxValueMatch();
-				if (match) {
-					return false;
-				}
-			}
-
-			if (!isFetchDone) {
-				fetchSuggestions({ filter: comboboxValue });
-				return true;
-			} else {
-				return cachedSuggestions?.filter !== filter || !!suggestions.length;
-			}
+		checkIfListboxCanOpen: async () => {
+			return true;
 		}
 	});
 
@@ -125,16 +87,28 @@
 		state
 	});
 
+	let rootEl: HTMLElement;
+	let comboboxEl: HTMLInputElement;
+	let listboxEl: HTMLDataListElement;
+
+	let errorMessage: string | null = null;
+	let loading: boolean = false;
+	let suggestions: string[] = [];
+	let cachedFilter: string | null | undefined = undefined;
+
 	let comboboxValue: string = '';
 	let filter: string = comboboxValue;
 
-	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
 	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({ state, activeOptionId });
 
-	let observer: CheckIfInViewObserver;
+	let elementInViewChecker: ElementInViewChecker;
 
 	onMount(() => {
-		observer = createIntersectionObserver();
+		elementInViewChecker = new ElementInViewChecker(listboxEl);
+
+		() => {
+			elementInViewChecker.destroy();
+		};
 	});
 
 	function createIntersectionObserver() {
@@ -155,7 +129,7 @@
 				});
 			},
 			{
-				root: listbox,
+				root: listboxEl,
 				threshold: 1
 			}
 		);
@@ -171,53 +145,49 @@
 		};
 	}
 
-	let errorMessage: string | null = null;
-	let loading: boolean = false;
-	let suggestions: string[] = [];
-	let cachedSuggestions:
-		| {
-				filter: string;
-				results: string[];
-		  }
-		| undefined = undefined;
-	let isFetchDone: boolean = false;
-	let lastRequestToken: any | undefined = undefined;
 	async function fetchSuggestions(input: { filter: string }) {
-		const token = {};
-
 		try {
-			isFetchDone = true;
-			errorMessage = null;
-
-			if (cachedSuggestions?.filter === input.filter) {
-				return cachedSuggestions.results;
+			if (cachedFilter === input.filter) {
+				return true;
 			}
 
-			let request: string = behavior.canFilterOptionsInListbox ? '' : input.filter;
+			errorMessage = null;
+			cachedFilter = input.filter;
+
 			loading = true;
 
-			lastRequestToken = token;
-			const response = await api.fetchSuggestions(request);
+			const checkHasOverlap = await debounce({
+				key: fetchSuggestions,
+				delay: 100
+			});
+			if (checkHasOverlap()) return false;
 
-			if (lastRequestToken !== token) {
-				return;
-			}
+			const response = await api.fetchSuggestions(input.filter);
+			if (checkHasOverlap()) return false;
 
 			if (response.status === 404) {
+				loading = false;
 				throw new Error('No results found');
+			} else if (response.status >= 500) {
+				throw new Error('Error fetching results', {
+					cause: response.body
+				});
 			}
 
-			suggestions = await response.json();
+			const responseBody = await response.json();
+			if (checkHasOverlap()) return false;
+
+			suggestions = responseBody;
+			loading = false;
+
+			return true;
 		} catch (e) {
 			const error = e as Error;
 			errorMessage = error.message;
-		} finally {
-			if (lastRequestToken !== token) {
-				return;
-			}
 
 			loading = false;
-			lastRequestToken = undefined;
+
+			return false;
 		}
 	}
 
@@ -226,17 +196,17 @@
 	}
 
 	async function setComboboxSelectionRange(input: { start: number; end: number }) {
-		combobox.setSelectionRange(input.start, input.end);
+		comboboxEl.setSelectionRange(input.start, input.end);
 	}
 
 	async function scrollOptionIntoView(input: { option: string }) {
-		const optionEl = listbox.querySelector(`[value="${input.option}"]`);
+		const optionEl = listboxEl.querySelector(`[value="${input.option}"]`);
 
 		if (!optionEl) {
 			return;
 		}
 
-		const isOptionInView = await observer.checkElementIsInView(optionEl);
+		const isOptionInView = await elementInViewChecker.check(optionEl);
 		if (!isOptionInView) {
 			optionEl.scrollIntoView({
 				block: 'nearest'
@@ -244,34 +214,46 @@
 		}
 	}
 
-	async function getFirstOption() {
-		return suggestions.at(0) ?? null;
-	}
-
-	async function getLastOption() {
-		return suggestions.at(suggestions.length - 1) ?? null;
-	}
-
 	async function getNextOption(option: string | null) {
-		if (!option) return await getFirstOption();
+		if (!suggestions?.length) return null;
 
-		if (option === (await getLastOption())) {
-			return await getFirstOption();
+		let index: number = 0;
+
+		if (!option) {
+			const match = findComboboxValueMatch();
+			if (match) {
+				index = suggestions.indexOf(match) + 1;
+			}
+		} else {
+			index = suggestions.indexOf(option) + 1;
 		}
 
-		const index = suggestions.indexOf(option);
-		return suggestions.at(index + 1) ?? null;
+		if (index > suggestions.length - 1) {
+			index = 0;
+		}
+
+		return suggestions.at(index) ?? null;
 	}
 
 	async function getPreviousOption(option: string | null) {
-		if (!option) return await getLastOption();
+		if (!suggestions?.length) return null;
 
-		if (option === (await getFirstOption())) {
-			return await getLastOption();
+		let index: number = 0;
+
+		if (!option) {
+			const match = findComboboxValueMatch();
+			if (match) {
+				index = suggestions.indexOf(match) - 1;
+			}
+		} else {
+			index = suggestions.indexOf(option) - 1;
 		}
 
-		const index = suggestions.indexOf(option);
-		return suggestions.at(index - 1) ?? null;
+		if (index < 0) {
+			index = suggestions.length - 1;
+		}
+
+		return suggestions.at(index) ?? null;
 	}
 
 	function getOptionId(option: string) {
@@ -285,15 +267,7 @@
 	}
 
 	async function handleRootFocusOut(event: FocusEvent) {
-		await autocompleteHelpers.handleRootFocusOut({ state, root, event, callbacks: hooks });
-	}
-
-	async function handleRootPointerOut() {
-		await autocompleteHelpers.handleRootPointerOut({ state, callbacks: hooks });
-	}
-
-	async function handleRootPointerOver() {
-		await autocompleteHelpers.handleRootPointerOver({ state, callbacks: hooks });
+		await autocompleteHelpers.handleRootFocusOut({ state, root: rootEl, event, callbacks: hooks });
 	}
 
 	async function handleOptionClick(input: { option: string }) {
@@ -307,21 +281,27 @@
 	async function handleButtonClick() {
 		await autocompleteHelpers.handleButtonClick({
 			state,
+			comboboxValue,
 			callbacks: hooks
 		});
 	}
 
-	async function handleBackgroundPointerUp() {
-		await autocompleteHelpers.handleBackgroundPointerUp({ state, root, callbacks: hooks });
+	async function handleListboxClick(event: MouseEvent) {
+		await autocompleteHelpers.handleListboxClick({ event });
+	}
+
+	async function handleBackgroundPointerUp(event: MouseEvent) {
+		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, callbacks: hooks });
 	}
 
 	async function handleComboboxBlur() {
 		await autocompleteHelpers.handleComboboxBlur({ state, callbacks: hooks });
 	}
 
-	async function handleComboboxClick() {
+	async function handleComboboxClick(event: MouseEvent) {
 		await autocompleteHelpers.handleComboboxClick({
 			state,
+			comboboxValue,
 			callbacks: hooks
 		});
 	}
@@ -335,8 +315,9 @@
 
 	async function handleComboboxKeyDown(event: KeyboardEvent) {
 		await autocompleteHelpers.handleComboboxKeyDown({
-			event,
 			state,
+			event,
+			comboboxValue,
 			callbacks: hooks
 		});
 	}
@@ -346,7 +327,6 @@
 		const target = event.target as HTMLInputElement;
 
 		comboboxValue = target.value;
-		fetchSuggestions({ filter: comboboxValue }).then((e) => console.warn(e));
 
 		await autocompleteHelpers.handleComboboxInput({
 			state,
@@ -364,30 +344,19 @@
 
 <svelte:window on:pointerup={handleBackgroundPointerUp} />
 
-<div>
-	{comboboxValue}
-	{suggestions.length}
-	{!!errorMessage}
-	{loading}
-	<label for="cb1-input">State</label>
-	<div
-		bind:this={root}
-		class="combobox combobox-list"
-		on:focusout={handleRootFocusOut}
-		on:pointerout={handleRootPointerOut}
-		on:pointerover={handleRootPointerOver}
-	>
-		<div class="group" class:focus={state.elementWithFocus === 'combobox'}>
+<label bind:this={rootEl} class="Autocomplete" on:focusout={handleRootFocusOut}>
+	<span>State</span>
+	<div class="Autocomplete__listbox-anchor">
+		<div class="Autocomplete__input-group" class:focus={state.elementWithFocus === 'combobox'}>
 			<input
-				bind:this={combobox}
-				id="cb1-input"
-				class="cb_edit"
+				bind:this={comboboxEl}
+				class="Autocomplete__input"
 				value={comboboxValue}
 				type="text"
 				role="combobox"
 				aria-expanded={a11yAttributes.combobox['aria-expanded']}
 				aria-autocomplete={autocomplete}
-				aria-controls="cb1-listbox"
+				aria-controls="Autocomplete__listbox"
 				aria-activedescendant={a11yAttributes.combobox['aria-activedescendant']}
 				on:input={handleComboboxInput}
 				on:keydown={handleComboboxKeyDown}
@@ -396,9 +365,9 @@
 				on:blur={handleComboboxBlur}
 			/>
 			<button
-				id="cb1-button"
+				class="Autocomplete__button"
 				tabindex="-1"
-				aria-label="States"
+				type="button"
 				aria-expanded={a11yAttributes.button['aria-expanded']}
 				aria-controls="cb1-listbox"
 				on:click={handleButtonClick}
@@ -421,11 +390,12 @@
 			</button>
 		</div>
 		<datalist
-			bind:this={listbox}
-			id="cb1-listbox"
-			class:focus={state.elementWithFocus === 'listbox'}
-			style:display={state.isListboxOpen ? 'block' : 'none'}
-			aria-label="States"
+			bind:this={listboxEl}
+			id="Autocomplete__listbox"
+			class="Autocomplete__listbox"
+			class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
+			class:Autocomplete__listbox--open={state.isListboxOpen}
+			on:click={handleListboxClick}
 		>
 			{#if errorMessage}
 				<option disabled>{errorMessage}</option>
@@ -435,6 +405,9 @@
 				{#each suggestions as suggestion}
 					<option
 						id={getOptionId(suggestion)}
+						class="Autocomplete__option"
+						class:Autocomplete__option--active={state.activeOption === suggestion}
+						class:Autocomplete__option--selected={comboboxValue === suggestion}
 						value={suggestion}
 						aria-selected={state.activeOption === suggestion
 							? a11yAttributes.activeOption['aria-selected']
@@ -447,4 +420,78 @@
 			{/if}
 		</datalist>
 	</div>
-</div>
+</label>
+
+<style>
+	.Autocomplete {
+		user-select: none;
+	}
+
+	.Autocomplete__listbox-anchor {
+		position: relative;
+		z-index: 1;
+	}
+
+	.Autocomplete__listbox {
+		display: none;
+		position: absolute;
+		width: 100%;
+		border: black solid 1px;
+		max-height: 200px;
+		overflow-y: auto;
+		overflow-x: hidden;
+	}
+
+	.Autocomplete__listbox--focus {
+		border: blue solid 1px;
+	}
+
+	.Autocomplete__input-group {
+		display: flex;
+		border: gray solid 1px;
+	}
+
+	.Autocomplete:active .Autocomplete__input-group,
+	.Autocomplete__input-group:focus-within {
+		outline: blue solid 1px;
+	}
+
+	.Autocomplete__input {
+		border: none;
+	}
+
+	.Autocomplete__input:focus-visible {
+		outline: none;
+	}
+
+	.Autocomplete__button {
+		appearance: none;
+		border: none;
+		background: none;
+	}
+
+	.Autocomplete__button:hover {
+		cursor: pointer;
+		background-color: lightgray;
+	}
+
+	.Autocomplete__listbox--open {
+		display: block;
+	}
+
+	.Autocomplete__option {
+		cursor: pointer;
+	}
+
+	.Autocomplete__option:where(:hover) {
+		background-color: whitesmoke;
+	}
+
+	.Autocomplete__option--selected {
+		background-color: lightblue;
+	}
+
+	.Autocomplete__option--active {
+		background-color: lightgray;
+	}
+</style>
