@@ -300,12 +300,18 @@
 
 <svelte:window on:pointerup={handleBackgroundPointerUp} />
 
-<label bind:this={rootEl} class="Autocomplete" on:focusout={handleRootFocusOut}>
-	<span>State</span>
-	<div class="Autocomplete__listbox-anchor">
+<div
+	bind:this={rootEl}
+	class="Autocomplete Autocomplete__listbox-anchor"
+	on:focusout={handleRootFocusOut}
+>
+	<label class="Autocomplete__input-container" aria-label="State">
+		<span>State</span>
+
 		<div class="Autocomplete__input-group" class:focus={state.elementWithFocus === 'combobox'}>
 			<input
 				bind:this={comboboxEl}
+				id="Autocomplete__input"
 				class="Autocomplete__input"
 				value={comboboxValue}
 				type="text"
@@ -321,8 +327,9 @@
 			/>
 			<button
 				class="Autocomplete__button"
-				tabindex="-1"
 				type="button"
+				tabindex="-1"
+				aria-label="State"
 				aria-expanded={a11yAttributes.button['aria-expanded']}
 				aria-controls="cb1-listbox"
 				on:click={handleButtonClick}
@@ -344,38 +351,40 @@
 				</svg>
 			</button>
 		</div>
-		<datalist
-			bind:this={listboxEl}
-			id="Autocomplete__listbox"
-			class="Autocomplete__listbox"
-			class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
-			class:Autocomplete__listbox--open={state.isListboxOpen}
-			on:click={handleListboxClick}
-		>
-			{#if errorMessage}
-				<option disabled>{errorMessage}</option>
-			{:else if loading}
-				<option disabled>Loading...</option>
-			{:else if suggestions.length}
-				{#each suggestions as suggestion}
-					<option
-						id={getOptionId(suggestion)}
-						class="Autocomplete__option"
-						class:Autocomplete__option--active={state.activeOption === suggestion}
-						class:Autocomplete__option--selected={comboboxValue === suggestion}
-						value={suggestion}
-						aria-selected={state.activeOption === suggestion
-							? a11yAttributes.activeOption['aria-selected']
-							: a11yAttributes.otherOptions['aria-selected']}
-						on:click={() => handleOptionClick({ option: suggestion })}
-					>
-						{suggestion}
-					</option>
-				{/each}
-			{/if}
-		</datalist>
-	</div>
-</label>
+	</label>
+
+	<datalist
+		bind:this={listboxEl}
+		id="Autocomplete__listbox"
+		class="Autocomplete__listbox"
+		class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
+		class:Autocomplete__listbox--open={state.isListboxOpen}
+		aria-label="State"
+		on:click={handleListboxClick}
+	>
+		{#if errorMessage}
+			<option disabled>{errorMessage}</option>
+		{:else if loading}
+			<option disabled>Loading...</option>
+		{:else if suggestions.length}
+			{#each suggestions as suggestion}
+				<option
+					id={getOptionId(suggestion)}
+					class="Autocomplete__option"
+					class:Autocomplete__option--active={state.activeOption === suggestion}
+					class:Autocomplete__option--selected={comboboxValue === suggestion}
+					value={suggestion}
+					aria-selected={state.activeOption === suggestion
+						? a11yAttributes.activeOption['aria-selected']
+						: a11yAttributes.otherOptions['aria-selected']}
+					on:click={() => handleOptionClick({ option: suggestion })}
+				>
+					{suggestion}
+				</option>
+			{/each}
+		{/if}
+	</datalist>
+</div>
 
 <style>
 	.Autocomplete {
@@ -385,6 +394,10 @@
 	.Autocomplete__listbox-anchor {
 		position: relative;
 		z-index: 1;
+	}
+
+	.Autocomplete__input-container {
+		display: block;
 	}
 
 	.Autocomplete__listbox {
