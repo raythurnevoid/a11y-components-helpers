@@ -34,6 +34,10 @@
 				filter: behavior.canFilterOptionsInListbox ? filter : ''
 			});
 
+			if (!result) {
+				state.isListboxOpen = false;
+			}
+
 			return result;
 		},
 		getNextOption: async (input) => {
@@ -43,7 +47,7 @@
 			return getPreviousOption(input.option);
 		},
 		findOptionToActivate: async (input) => {
-			if (!suggestions || !input.filter) return;
+			if (!suggestions || !comboboxValue) return;
 
 			let optionToActivate: string | null = null;
 
@@ -52,7 +56,7 @@
 			} else {
 				const firstSuggestion = suggestions.at(0)!;
 
-				if (firstSuggestion?.toLocaleLowerCase().startsWith(input.filter.toLowerCase())) {
+				if (firstSuggestion?.toLocaleLowerCase().startsWith(comboboxValue.toLowerCase())) {
 					optionToActivate = firstSuggestion;
 				}
 			}
@@ -83,9 +87,7 @@
 		}
 	});
 
-	let behavior = autocompleteHelpers.getBehavior({
-		state
-	});
+	let behavior = autocompleteHelpers.getBehavior(state);
 
 	let rootEl: HTMLElement;
 	let comboboxEl: HTMLInputElement;
@@ -110,40 +112,6 @@
 			elementInViewChecker.destroy();
 		};
 	});
-
-	function createIntersectionObserver() {
-		const map = new Map<Element, (isIntersecting: boolean) => void>();
-
-		const instance = new IntersectionObserver(
-			(entries) => {
-				entries.forEach((entry) => {
-					if (map.has(entry.target)) {
-						const callback = map.get(entry.target)!;
-
-						callback(entry.isIntersecting);
-
-						map.delete(entry.target);
-					}
-
-					instance.unobserve(entry.target);
-				});
-			},
-			{
-				root: listboxEl,
-				threshold: 1
-			}
-		);
-
-		return {
-			instance,
-			checkElementIsInView: async (target: Element) => {
-				return new Promise<boolean>((resolve) => {
-					map.set(target, resolve);
-					instance.observe(target);
-				});
-			}
-		};
-	}
 
 	async function fetchSuggestions(input: { filter: string }) {
 		try {
@@ -185,6 +153,7 @@
 			const error = e as Error;
 			errorMessage = error.message;
 
+			suggestions = [];
 			loading = false;
 
 			return false;
@@ -267,22 +236,21 @@
 	}
 
 	async function handleRootFocusOut(event: FocusEvent) {
-		await autocompleteHelpers.handleRootFocusOut({ state, root: rootEl, event, callbacks: hooks });
+		await autocompleteHelpers.handleRootFocusOut({ state, root: rootEl, event, hooks });
 	}
 
 	async function handleOptionClick(input: { option: string }) {
 		await autocompleteHelpers.handleOptionClick({
 			...input,
 			state,
-			callbacks: hooks
+			hooks
 		});
 	}
 
 	async function handleButtonClick() {
 		await autocompleteHelpers.handleButtonClick({
 			state,
-			comboboxValue,
-			callbacks: hooks
+			hooks
 		});
 	}
 
@@ -291,21 +259,20 @@
 	}
 
 	async function handleBackgroundPointerUp(event: MouseEvent) {
-		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, callbacks: hooks });
+		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, hooks });
 	}
 
 	async function handleComboboxClick(event: MouseEvent) {
 		await autocompleteHelpers.handleComboboxClick({
 			state,
-			comboboxValue,
-			callbacks: hooks
+			hooks
 		});
 	}
 
 	async function handleComboboxFocus() {
 		await autocompleteHelpers.handleComboboxFocus({
 			state,
-			callbacks: hooks
+			hooks
 		});
 	}
 
@@ -313,8 +280,7 @@
 		await autocompleteHelpers.handleComboboxKeyDown({
 			state,
 			event,
-			comboboxValue,
-			callbacks: hooks
+			hooks
 		});
 	}
 
@@ -327,8 +293,7 @@
 		await autocompleteHelpers.handleComboboxInput({
 			state,
 			event,
-			comboboxValue,
-			callbacks: hooks
+			hooks
 		});
 	}
 </script>
