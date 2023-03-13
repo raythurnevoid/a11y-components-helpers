@@ -11,7 +11,7 @@
 	<ListAutocomplete autocomplete="both" />
 	<ListAutocomplete autocomplete="both" />
 	<ListAutocomplete autocomplete="both" /> -->
-	<ListAutocomplete bind:state autocomplete="list" />
+	<ListAutocomplete bind:state autocomplete="both" />
 
 	<aside id="state">
 		<pre>{JSON.stringify(state, null, 2)}</pre>

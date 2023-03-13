@@ -100,6 +100,7 @@ export async function handleComboboxKeyDown(input: {
 		prepareOptions?: Hooks['prepareOptions'];
 		setSelectedOption?: Hooks['setSelectedOption'];
 		clearCombobox?: Hooks['clearCombobox'];
+		showInlineSuggestion?: Hooks['showInlineSuggestion'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -201,6 +202,7 @@ export async function handleComboboxKeyDown(input: {
 				}
 			}
 
+			let isActiveOptionChanged: boolean = false;
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -216,12 +218,14 @@ export async function handleComboboxKeyDown(input: {
 						option: state.activeOption,
 						reason: 'combobox keydown: ArrowDown'
 					});
-					if (nextOption) {
+					if (nextOption && nextOption !== state.activeOption) {
 						await updateState({
 							state: {
 								activeOption: nextOption
 							}
 						});
+
+						isActiveOptionChanged = true;
 					}
 				},
 				(state) =>
@@ -230,6 +234,13 @@ export async function handleComboboxKeyDown(input: {
 						reason: 'combobox keydown: ArrowUp'
 					})
 			);
+
+			if (isActiveOptionChanged && state.autocomplete === 'both') {
+				input.callbacks.setSelectedOption?.({
+					option: state.activeOption,
+					reason: 'combobox keydown: ArrowDown'
+				});
+			}
 
 			shouldPreventDefault = true;
 			break;
@@ -284,6 +295,7 @@ export async function handleComboboxKeyDown(input: {
 				}
 			}
 
+			let isActiveOptionChanged: boolean = false;
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -299,12 +311,14 @@ export async function handleComboboxKeyDown(input: {
 						option: state.activeOption,
 						reason: 'combobox keydown: ArrowUp'
 					});
-					if (prevOption) {
+					if (prevOption && prevOption !== state.activeOption) {
 						await updateState({
 							state: {
 								activeOption: prevOption
 							}
 						});
+
+						isActiveOptionChanged = true;
 					}
 				},
 				(state) =>
@@ -313,6 +327,13 @@ export async function handleComboboxKeyDown(input: {
 						reason: 'combobox keydown: ArrowUp'
 					})
 			);
+
+			if (isActiveOptionChanged && state.autocomplete === 'both') {
+				input.callbacks.setSelectedOption?.({
+					option: state.activeOption,
+					reason: 'combobox keydown: ArrowUp'
+				});
+			}
 
 			shouldPreventDefault = true;
 			break;
@@ -883,6 +904,8 @@ export type SetSelectedOptionReason =
 	| 'combobox keydown: Enter'
 	| 'combobox keydown: Tab'
 	| 'combobox keydown: Esc'
+	| 'combobox keydown: ArrowDown'
+	| 'combobox keydown: ArrowUp'
 	| 'option click';
 export type ClearComboboxReason = 'combobox keydown: Esc';
 export type FocusComboboxReason = 'button click';
@@ -894,10 +917,8 @@ export type FindOptionToActivatenReason =
 	| 'combobox click'
 	| 'button click'
 	| 'open';
-export type GetFirstOptionReason = 'combobox keydown: ArrowDown';
-export type GetPreviousOptionReason = 'combobox keydown: ArrowUp';
 export type GetNextOptionReason = 'combobox keydown: ArrowDown';
-export type GetLastOptionReason = 'combobox keydown: ArrowUp';
+export type GetPreviousOptionReason = 'combobox keydown: ArrowUp';
 export type CheckIfListboxCanOpenReason =
 	| 'button click'
 	| 'combobox input'
