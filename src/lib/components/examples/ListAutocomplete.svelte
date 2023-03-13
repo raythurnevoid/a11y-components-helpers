@@ -294,10 +294,6 @@
 		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, callbacks: hooks });
 	}
 
-	async function handleComboboxBlur() {
-		await autocompleteHelpers.handleComboboxBlur({ state, callbacks: hooks });
-	}
-
 	async function handleComboboxClick(event: MouseEvent) {
 		await autocompleteHelpers.handleComboboxClick({
 			state,
@@ -335,11 +331,6 @@
 			callbacks: hooks
 		});
 	}
-
-	interface CheckIfInViewObserver {
-		instance: IntersectionObserver;
-		checkElementIsInView: (target: Element) => Promise<boolean>;
-	}
 </script>
 
 <svelte:window on:pointerup={handleBackgroundPointerUp} />
@@ -362,7 +353,6 @@
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleComboboxClick}
 				on:focus={handleComboboxFocus}
-				on:blur={handleComboboxBlur}
 			/>
 			<button
 				class="Autocomplete__button"

@@ -141,13 +141,6 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
-			// if (state.elementWithFocus === 'listbox' && input.callbacks.setSelectedOption) {
-			// 	await input.callbacks.setSelectedOption({
-			// 		option: state.activeOption,
-			// 		reason: 'combobox keydown: Enter'
-			// 	});
-			// }
-
 			if (currentActiveOption && input.callbacks.setSelectedOption) {
 				await input.callbacks.setSelectedOption({
 					option: currentActiveOption,
@@ -414,32 +407,6 @@ export async function handleComboboxFocus(input: {
 		},
 		reason: 'combobox focus'
 	});
-}
-
-export async function handleComboboxBlur(input: {
-	state: State;
-	callbacks: {
-		updateState: Hooks['updateState'];
-	};
-}): Promise<void> {
-	let state = input.state;
-
-	// state = await collectStateUpdates(
-	// 	state,
-	// 	async (updateState) => {
-	// 		await updateStateOnRemoveVisualFocus({
-	// 			state,
-	// 			callbacks: {
-	// 				updateState
-	// 			}
-	// 		});
-	// 	},
-	// 	(state) =>
-	// 		input.callbacks.updateState({
-	// 			state,
-	// 			reason: 'combobox blur'
-	// 		})
-	// );
 }
 
 export async function handleComboboxClick(input: {
