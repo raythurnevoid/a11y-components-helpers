@@ -11,7 +11,8 @@
 		autocomplete,
 		isListboxOpen: false,
 		elementWithFocus: null,
-		activeOption: null
+		activeOption: null,
+		valueOnLastChange: null
 	});
 
 	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
@@ -29,7 +30,7 @@
 		prepareOptions: async () => {
 			let result = true;
 
-			filter = comboboxValue;
+			filter = value;
 			result = await fetchSuggestions({
 				filter: behavior.canFilterOptionsInListbox ? filter : ''
 			});
@@ -47,7 +48,7 @@
 			return getPreviousOption(input.option);
 		},
 		findOptionToActivate: async (input) => {
-			if (!suggestions || !comboboxValue) return;
+			if (!suggestions || !value) return;
 
 			let optionToActivate: string | null = null;
 
@@ -56,26 +57,22 @@
 			} else {
 				const firstSuggestion = suggestions.at(0)!;
 
-				if (firstSuggestion?.toLocaleLowerCase().startsWith(comboboxValue.toLowerCase())) {
+				if (firstSuggestion?.toLocaleLowerCase().startsWith(value.toLowerCase())) {
 					optionToActivate = firstSuggestion;
 				}
 			}
 
 			return optionToActivate;
 		},
-		setSelectedOption: async (input) => {
-			console.log(input);
-			comboboxValue = input.option ?? '';
+		setComboboxValue: async (input) => {
+			value = input.value ?? '';
 		},
 		focusCombobox: async () => {
 			comboboxEl.focus();
 		},
-		clearCombobox: async () => {
-			comboboxValue = '';
-		},
 		showInlineSuggestion: async () => {
 			if (state.activeOption) {
-				comboboxEl.value = comboboxValue = state.activeOption;
+				comboboxEl.value = value = state.activeOption;
 				setComboboxSelectionRange({
 					start: filter.length,
 					end: state.activeOption.length
@@ -91,15 +88,15 @@
 
 	let rootEl: HTMLElement;
 	let comboboxEl: HTMLInputElement;
-	let listboxEl: HTMLDataListElement;
+	let listboxEl: HTMLElement;
 
 	let errorMessage: string | null = null;
 	let loading: boolean = false;
 	let suggestions: string[] = [];
 	let cachedFilter: string | null | undefined = undefined;
 
-	let comboboxValue: string = '';
-	let filter: string = comboboxValue;
+	let value: string = '';
+	let filter: string = value;
 
 	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({ state, activeOptionId });
 
@@ -161,7 +158,7 @@
 	}
 
 	function findComboboxValueMatch() {
-		return suggestions.find((option) => option === comboboxValue);
+		return suggestions.find((option) => option === value);
 	}
 
 	async function setComboboxSelectionRange(input: { start: number; end: number }) {
@@ -236,13 +233,14 @@
 	}
 
 	async function handleRootFocusOut(event: FocusEvent) {
-		await autocompleteHelpers.handleRootFocusOut({ state, root: rootEl, event, hooks });
+		await autocompleteHelpers.handleRootFocusOut({ state, rootEl, event, value, hooks });
 	}
 
 	async function handleOptionClick(input: { option: string }) {
 		await autocompleteHelpers.handleOptionClick({
-			...input,
 			state,
+			option: input.option,
+			value,
 			hooks
 		});
 	}
@@ -252,10 +250,6 @@
 			state,
 			hooks
 		});
-	}
-
-	async function handleListboxClick(event: MouseEvent) {
-		await autocompleteHelpers.handleListboxClick({ event });
 	}
 
 	async function handleBackgroundPointerUp(event: MouseEvent) {
@@ -280,6 +274,7 @@
 		await autocompleteHelpers.handleComboboxKeyDown({
 			state,
 			event,
+			value,
 			hooks
 		});
 	}
@@ -288,7 +283,7 @@
 		const event = e as InputEvent;
 		const target = event.target as HTMLInputElement;
 
-		comboboxValue = target.value;
+		value = target.value;
 
 		await autocompleteHelpers.handleComboboxInput({
 			state,
@@ -313,7 +308,7 @@
 				bind:this={comboboxEl}
 				id="Autocomplete__input"
 				class="Autocomplete__input"
-				value={comboboxValue}
+				{value}
 				type="text"
 				role="combobox"
 				aria-expanded={a11yAttributes.combobox['aria-expanded']}
@@ -353,14 +348,14 @@
 		</div>
 	</label>
 
-	<datalist
+	<div
 		bind:this={listboxEl}
 		id="Autocomplete__listbox"
 		class="Autocomplete__listbox"
 		class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
 		class:Autocomplete__listbox--open={state.isListboxOpen}
+		role="listbox"
 		aria-label="State"
-		on:click={handleListboxClick}
 	>
 		{#if errorMessage}
 			<option disabled>{errorMessage}</option>
@@ -372,7 +367,7 @@
 					id={getOptionId(suggestion)}
 					class="Autocomplete__option"
 					class:Autocomplete__option--active={state.activeOption === suggestion}
-					class:Autocomplete__option--selected={comboboxValue === suggestion}
+					class:Autocomplete__option--selected={value === suggestion}
 					value={suggestion}
 					aria-selected={state.activeOption === suggestion
 						? a11yAttributes.activeOption['aria-selected']
@@ -383,7 +378,7 @@
 				</option>
 			{/each}
 		{/if}
-	</datalist>
+	</div>
 </div>
 
 <style>

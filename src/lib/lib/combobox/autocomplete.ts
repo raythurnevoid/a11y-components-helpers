@@ -53,16 +53,18 @@ export async function handleComboboxInput(input: {
 		}
 	);
 
-	if (!state.isListboxOpen || (state.autocomplete !== 'list' && state.autocomplete !== 'both')) {
+	if (state.autocomplete !== 'list' && state.autocomplete !== 'both') {
 		return;
 	}
 
-	let optionsAreReady =
-		(await input.hooks.prepareOptions?.({
-			reason: 'combobox input'
-		})) ?? true;
+	if (state.isListboxOpen) {
+		const optionsAreReady =
+			(await input.hooks.prepareOptions?.({
+				reason: 'combobox input'
+			})) ?? true;
 
-	if (!optionsAreReady) return;
+		if (!optionsAreReady) return;
+	}
 
 	if (input.hooks.findOptionToActivate) {
 		const optionToActivate = await input.hooks.findOptionToActivate({
@@ -98,8 +100,12 @@ export async function handleComboboxInput(input: {
  * - for {@link State.autocomplete} `"none"` https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-autocomplete-none/#kbd_label
  */
 export async function handleComboboxKeyDown(input: {
-	event: KeyboardEvent;
 	state: State;
+	event: KeyboardEvent;
+	/**
+	 * The value of the combobox.
+	 */
+	value: string;
 	hooks: {
 		updateState: Hooks['updateState'];
 		checkIfListboxCanOpen: Hooks['checkIfListboxCanOpen'];
@@ -107,9 +113,9 @@ export async function handleComboboxKeyDown(input: {
 		getNextOption: Hooks['getNextOption'];
 		findOptionToActivate?: Hooks['findOptionToActivate'];
 		prepareOptions?: Hooks['prepareOptions'];
-		setSelectedOption?: Hooks['setSelectedOption'];
-		clearCombobox?: Hooks['clearCombobox'];
+		setComboboxValue?: Hooks['setComboboxValue'];
 		showInlineSuggestion?: Hooks['showInlineSuggestion'];
+		triggerChange?: Hooks['triggerChange'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -143,6 +149,27 @@ export async function handleComboboxKeyDown(input: {
 							elementWithFocus: 'combobox'
 						}
 					});
+
+					if (input.hooks.setComboboxValue && currentActiveOption) {
+						await input.hooks.setComboboxValue({
+							value: currentActiveOption,
+							reason: 'combobox keydown: Enter'
+						});
+					}
+
+					if (currentActiveOption !== state.valueOnLastChange) {
+						if (input.hooks.triggerChange) {
+							await input.hooks.triggerChange({
+								reason: 'combobox keydown: Enter'
+							});
+						}
+
+						updateState({
+							state: {
+								valueOnLastChange: currentActiveOption
+							}
+						});
+					}
 				},
 				(state) =>
 					input.hooks.updateState({
@@ -150,13 +177,6 @@ export async function handleComboboxKeyDown(input: {
 						reason: 'combobox keydown: Enter'
 					})
 			);
-
-			if (currentActiveOption && input.hooks.setSelectedOption) {
-				await input.hooks.setSelectedOption({
-					option: currentActiveOption,
-					reason: 'combobox keydown: Enter'
-				});
-			}
 
 			shouldPreventDefault = true;
 			break;
@@ -187,7 +207,7 @@ export async function handleComboboxKeyDown(input: {
 						})
 				);
 
-				let optionsAreReady =
+				const optionsAreReady =
 					(await input.hooks.prepareOptions?.({
 						reason: 'combobox keydown: ArrowUp'
 					})) ?? true;
@@ -244,8 +264,8 @@ export async function handleComboboxKeyDown(input: {
 			);
 
 			if (state.autocomplete === 'both' && isActiveOptionChanged && state.activeOption) {
-				input.hooks.setSelectedOption?.({
-					option: state.activeOption,
+				input.hooks.setComboboxValue?.({
+					value: state.activeOption,
 					reason: 'combobox keydown: ArrowDown'
 				});
 			}
@@ -279,7 +299,7 @@ export async function handleComboboxKeyDown(input: {
 						})
 				);
 
-				let optionsAreReady =
+				const optionsAreReady =
 					(await input.hooks.prepareOptions?.({
 						reason: 'combobox keydown: ArrowUp'
 					})) ?? true;
@@ -336,8 +356,8 @@ export async function handleComboboxKeyDown(input: {
 			);
 
 			if (state.autocomplete === 'both' && isActiveOptionChanged && state.activeOption) {
-				input.hooks.setSelectedOption?.({
-					option: state.activeOption,
+				input.hooks.setComboboxValue?.({
+					value: state.activeOption,
 					reason: 'combobox keydown: ArrowUp'
 				});
 			}
@@ -365,9 +385,16 @@ export async function handleComboboxKeyDown(input: {
 								elementWithFocus: 'combobox'
 							}
 						});
-					} else {
-						if (input.hooks.clearCombobox) {
-							await input.hooks.clearCombobox({
+					} else if (input.value) {
+						if (input.hooks.setComboboxValue) {
+							await input.hooks.setComboboxValue({
+								value: '',
+								reason: 'combobox keydown: Esc'
+							});
+						}
+
+						if (input.hooks.triggerChange) {
+							await input.hooks.triggerChange({
 								reason: 'combobox keydown: Esc'
 							});
 						}
@@ -397,6 +424,27 @@ export async function handleComboboxKeyDown(input: {
 							updateState
 						}
 					});
+
+					if (input.hooks.setComboboxValue && currentActiveOption) {
+						await input.hooks.setComboboxValue({
+							value: currentActiveOption,
+							reason: 'combobox keydown: Tab'
+						});
+					}
+
+					if (input.value !== state.valueOnLastChange) {
+						if (input.hooks.triggerChange) {
+							await input.hooks.triggerChange({
+								reason: 'combobox keydown: Tab'
+							});
+						}
+
+						updateState({
+							state: {
+								valueOnLastChange: input.value
+							}
+						});
+					}
 				},
 				(state) =>
 					input.hooks.updateState({
@@ -404,13 +452,6 @@ export async function handleComboboxKeyDown(input: {
 						reason: 'combobox keydown: Tab'
 					})
 			);
-
-			if (currentActiveOption && input.hooks.setSelectedOption) {
-				await input.hooks.setSelectedOption({
-					option: currentActiveOption,
-					reason: 'combobox keydown: Tab'
-				});
-			}
 
 			break;
 		}
@@ -489,9 +530,14 @@ export async function handleComboboxClick(input: {
 			})
 	);
 
-	await input.hooks.prepareOptions?.({
-		reason: 'combobox click'
-	});
+	if (!state.isListboxOpen) return;
+
+	const optionsAreReady =
+		(await input.hooks.prepareOptions?.({
+			reason: 'combobox click'
+		})) ?? true;
+
+	if (!optionsAreReady) return;
 
 	if (input.hooks.findOptionToActivate) {
 		const optionToActivate = await input.hooks.findOptionToActivate({
@@ -507,6 +553,16 @@ export async function handleComboboxClick(input: {
 			});
 		}
 	}
+}
+
+/**
+ * Prevent the default behavior of the event, calls stopPropagation() and preventDefault() on the event.
+ *
+ * @param input
+ */
+export async function handleComboboxChange(input: { event: Event }) {
+	input.event.stopPropagation();
+	input.event.preventDefault();
 }
 
 /**
@@ -546,6 +602,20 @@ export async function handleButtonClick(input: {
 						updateState
 					}
 				});
+
+				if (state.elementWithFocus != 'combobox') {
+					await updateState({
+						state: {
+							elementWithFocus: 'combobox'
+						}
+					});
+				}
+
+				if (input.hooks.focusCombobox) {
+					await input.hooks.focusCombobox({
+						reason: 'button click'
+					});
+				}
 			}
 		},
 		(state) =>
@@ -554,12 +624,6 @@ export async function handleButtonClick(input: {
 				reason: 'button click'
 			})
 	);
-
-	if (input.hooks.focusCombobox) {
-		await input.hooks.focusCombobox({
-			reason: 'button click'
-		});
-	}
 
 	if (state.isListboxOpen) {
 		await input.hooks.prepareOptions?.({
@@ -586,29 +650,24 @@ export async function handleButtonClick(input: {
 }
 
 /**
- * Helpful when the listbox element is a child of the label element, so the click event on the label element won't be triggered.
- * It basically calls the preventDefault method on the event.
- *
- * @param input
- */
-export async function handleListboxClick(input: { event: Event }) {
-	input.event?.preventDefault();
-}
-
-/**
  * Close the listbox if needed.
  */
 export async function handleRootFocusOut(input: {
 	state: State;
-	root: HTMLElement;
 	event: FocusEvent;
+	rootEl: HTMLElement;
+	/**
+	 * The value of the combobox input element (eventually including inline suggestion).
+	 */
+	value: string;
 	hooks: {
 		updateState: Hooks['updateState'];
+		triggerChange?: Hooks['triggerChange'];
 	};
 }): Promise<void> {
 	let state = input.state;
 
-	if (input.root.contains(input.event.target as HTMLElement)) {
+	if (!document.hasFocus() || input.rootEl.querySelector(':scope:hover, :hover')) {
 		return;
 	}
 
@@ -622,6 +681,20 @@ export async function handleRootFocusOut(input: {
 					updateState
 				}
 			});
+
+			if (input.value !== state.valueOnLastChange) {
+				if (input.hooks.triggerChange) {
+					await input.hooks.triggerChange({
+						reason: 'root focusout'
+					});
+				}
+
+				updateState({
+					state: {
+						valueOnLastChange: input.value
+					}
+				});
+			}
 		},
 		(state) =>
 			input.hooks.updateState({
@@ -638,10 +711,19 @@ export async function handleRootFocusOut(input: {
  */
 export async function handleOptionClick(input: {
 	state: State;
+	/**
+	 * The value of the combobox (only what the user has typed).
+	 */
+	value: string;
+	/**
+	 * The clicked option.
+	 */
 	option: string;
 	hooks: {
 		updateState: Hooks['updateState'];
-		setSelectedOption?: Hooks['setSelectedOption'];
+		setComboboxValue?: Hooks['setComboboxValue'];
+		focusCombobox?: Hooks['focusCombobox'];
+		triggerChange?: Hooks['triggerChange'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -656,6 +738,41 @@ export async function handleOptionClick(input: {
 					updateState
 				}
 			});
+
+			if (state.elementWithFocus != 'combobox') {
+				await updateState({
+					state: {
+						elementWithFocus: 'combobox'
+					}
+				});
+			}
+
+			if (input.hooks.focusCombobox) {
+				await input.hooks.focusCombobox({
+					reason: 'option click'
+				});
+			}
+
+			if (input.hooks.setComboboxValue) {
+				await input.hooks.setComboboxValue({
+					value: input.option,
+					reason: 'option click'
+				});
+			}
+
+			if (input.option !== state.valueOnLastChange) {
+				if (input.hooks.triggerChange) {
+					await input.hooks.triggerChange({
+						reason: 'option click'
+					});
+				}
+
+				updateState({
+					state: {
+						valueOnLastChange: input.option
+					}
+				});
+			}
 		},
 		(state) =>
 			input.hooks.updateState({
@@ -663,13 +780,6 @@ export async function handleOptionClick(input: {
 				reason: 'option click'
 			})
 	);
-
-	if (input.hooks.setSelectedOption) {
-		await input.hooks.setSelectedOption({
-			option: input.option,
-			reason: 'option click'
-		});
-	}
 }
 
 /**
@@ -729,8 +839,6 @@ async function updateStateOnClose(input: {
 	};
 }): Promise<State> {
 	let state = input.state;
-
-	console.warn('ASD', state);
 
 	if (
 		state.isListboxOpen &&
@@ -966,7 +1074,7 @@ type UpdateStateReason =
 	| 'open'
 	| 'open: filter match'
 	| 'open: filter doesnt match';
-export type SetSelectedOptionReason =
+export type setComboboxValueReason =
 	| 'combobox keydown: Enter'
 	| 'combobox keydown: Tab'
 	| 'combobox keydown: Esc'
@@ -974,7 +1082,7 @@ export type SetSelectedOptionReason =
 	| 'combobox keydown: ArrowUp'
 	| 'option click';
 export type ClearComboboxReason = 'combobox keydown: Esc';
-export type FocusComboboxReason = 'button click';
+export type FocusComboboxReason = 'button click' | 'option click';
 export type ShowInlineSuggestionReason = 'combobox input';
 export type FindOptionToActivatenReason =
 	| 'combobox input'
@@ -999,6 +1107,13 @@ export type PrepareOptionsReason =
 	| 'combobox click'
 	| 'button click'
 	| 'open';
+export type TriggerChangeReason =
+	| 'combobox change'
+	| 'combobox keydown: Enter'
+	| 'combobox keydown: Tab'
+	| 'combobox keydown: Esc'
+	| 'option click'
+	| 'root focusout';
 
 export interface Hooks {
 	/**
@@ -1099,34 +1214,23 @@ export interface Hooks {
 		reason: FindOptionToActivatenReason;
 	}) => Promise<string | null | undefined>;
 	/**
-	 * Called when an option is selected.
+	 * Called when an option is selected or when the user wants to clear the combobox by pressing `Esc`.
 	 *
 	 * The combobox value must be updated accordingly.
 	 *
 	 * When {@link State.autocomplete} is `both` this methos is called on `keydown ArrowDown` and `keydown ArrowUp` to update the combobox value.
 	 */
-	setSelectedOption?: (input: {
+	setComboboxValue?: (input: {
 		/**
-		 * The option to select.
+		 * The value of the selected option or an empty string in case the user pressed `Esc` to clear the combobox.
 		 */
-		option: string;
+		value: string;
 		/**
-		 * The reason why {@link setSelectedOption} is called.
+		 * The reason why {@link setComboboxValue} is called.
 		 *
 		 * Can be used to implement custom logics.
 		 */
-		reason: SetSelectedOptionReason;
-	}) => Promise<void>;
-	/**
-	 * Called when the user wants to clear the combobox by pressing `Esc`.
-	 */
-	clearCombobox?: (input: {
-		/**
-		 * The reason why {@link clearCombobox} is called.
-		 *
-		 * Can be used to implement custom logics.
-		 */
-		reason: ClearComboboxReason;
+		reason: setComboboxValueReason;
 	}) => Promise<void>;
 	/**
 	 * Called when the DOM focus must be moved to the combobox when a click occurs on the button.
@@ -1149,6 +1253,17 @@ export interface Hooks {
 		 * Can be used to implement custom logics.
 		 */
 		reason: ShowInlineSuggestionReason;
+	}) => Promise<void>;
+	/**
+	 * Called when the change event is expected to be triggered.
+	 */
+	triggerChange?: (input: {
+		/**
+		 * The reason why {@link triggerChange} is called.
+		 *
+		 * Can be used to implement custom logics.
+		 */
+		reason: TriggerChangeReason;
 	}) => Promise<void>;
 }
 
@@ -1173,4 +1288,8 @@ export interface State {
 	 * Can be used to apply some highlighting on the element.
 	 */
 	activeOption: string | null;
+	/**
+	 * The value of the combobox last time a change event was triggered.
+	 */
+	valueOnLastChange: string | null;
 }
