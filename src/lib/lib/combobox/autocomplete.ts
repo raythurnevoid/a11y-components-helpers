@@ -19,7 +19,13 @@ export async function handleComboboxInput(input: {
 
 	if (input.event.inputType.startsWith('insert') || input.event.inputType.startsWith('delete')) {
 		input.event.preventDefault();
+	} else {
+		return;
 	}
+
+	let reason = `combobox input: ${
+		input.event.inputType.startsWith('insert') ? 'insert' : 'delete'
+	}` as const;
 
 	state = await collectStateUpdates(
 		state,
@@ -33,7 +39,7 @@ export async function handleComboboxInput(input: {
 			}
 
 			let listboxCanOpen = await input.hooks.checkIfListboxCanOpen({
-				reason: 'combobox input'
+				reason
 			});
 
 			if (listboxCanOpen) {
@@ -48,19 +54,15 @@ export async function handleComboboxInput(input: {
 		async (statePatch) => {
 			return await input.hooks.updateState({
 				state: statePatch,
-				reason: 'combobox input'
+				reason
 			});
 		}
 	);
 
-	if (state.autocomplete !== 'list' && state.autocomplete !== 'both') {
-		return;
-	}
-
 	if (state.isListboxOpen) {
 		const optionsAreReady =
 			(await input.hooks.prepareOptions?.({
-				reason: 'combobox input'
+				reason
 			})) ?? true;
 
 		if (!optionsAreReady) return;
@@ -68,27 +70,26 @@ export async function handleComboboxInput(input: {
 
 	if (input.hooks.findOptionToActivate) {
 		const optionToActivate = await input.hooks.findOptionToActivate({
-			reason: 'combobox input'
+			reason
 		});
 
 		if (state.activeOption != optionToActivate) {
 			state = await input.hooks.updateState({
 				state: { activeOption: optionToActivate ?? null },
-				reason: optionToActivate
-					? 'combobox input: filter match'
-					: 'combobox input: filter doesnt match'
+				reason
 			});
 		}
 	}
 
+	const behavior = getBehavior(state);
 	if (
+		behavior.canShowInlineSuggestions &&
 		state.activeOption &&
-		(state.autocomplete === 'both' || state.elementWithFocus === 'listbox') &&
 		input.event.inputType.startsWith('insert') &&
 		input.hooks.showInlineSuggestion
 	) {
 		input.hooks.showInlineSuggestion({
-			reason: 'combobox input'
+			reason
 		});
 	}
 }
@@ -115,7 +116,7 @@ export async function handleComboboxKeyDown(input: {
 		prepareOptions?: Hooks['prepareOptions'];
 		setComboboxValue?: Hooks['setComboboxValue'];
 		showInlineSuggestion?: Hooks['showInlineSuggestion'];
-		triggerChange?: Hooks['triggerChange'];
+		commitValue?: Hooks['commitValue'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -157,17 +158,9 @@ export async function handleComboboxKeyDown(input: {
 						});
 					}
 
-					if (currentActiveOption !== state.valueOnLastChange) {
-						if (input.hooks.triggerChange) {
-							await input.hooks.triggerChange({
-								reason: 'combobox keydown: Enter'
-							});
-						}
-
-						updateState({
-							state: {
-								valueOnLastChange: currentActiveOption
-							}
+					if (input.hooks.commitValue) {
+						await input.hooks.commitValue({
+							reason: 'combobox keydown: Enter'
 						});
 					}
 				},
@@ -184,12 +177,17 @@ export async function handleComboboxKeyDown(input: {
 
 		case 'Down':
 		case 'ArrowDown': {
-			if (
-				!state.isListboxOpen &&
+			let isActiveOptionChanged: boolean = false;
+
+			const canContinue =
+				state.isListboxOpen ||
 				(await input.hooks.checkIfListboxCanOpen({
 					reason: 'combobox keydown: ArrowDown'
-				}))
-			) {
+				}));
+
+			if (!canContinue) return;
+
+			if (!state.isListboxOpen) {
 				state = await collectStateUpdates(
 					state,
 					async (updateState) => {
@@ -209,28 +207,26 @@ export async function handleComboboxKeyDown(input: {
 
 				const optionsAreReady =
 					(await input.hooks.prepareOptions?.({
-						reason: 'combobox keydown: ArrowUp'
+						reason: 'combobox keydown: ArrowDown'
 					})) ?? true;
 
 				if (!optionsAreReady || input.event.altKey) return;
 
 				if (input.hooks.findOptionToActivate) {
 					const optionToActivate = await input.hooks.findOptionToActivate({
-						reason: 'combobox input'
+						reason: 'combobox keydown: ArrowDown'
 					});
 
 					if (state.activeOption != optionToActivate) {
+						isActiveOptionChanged = true;
 						state = await input.hooks.updateState({
 							state: { activeOption: optionToActivate ?? null },
-							reason: optionToActivate
-								? 'combobox input: filter match'
-								: 'combobox input: filter doesnt match'
+							reason: 'combobox keydown: ArrowDown'
 						});
 					}
 				}
 			}
 
-			let isActiveOptionChanged: boolean = false;
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -263,7 +259,8 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
-			if (state.autocomplete === 'both' && isActiveOptionChanged && state.activeOption) {
+			const behavior = getBehavior(state);
+			if (behavior.canShowInlineSuggestions && isActiveOptionChanged && state.activeOption) {
 				input.hooks.setComboboxValue?.({
 					value: state.activeOption,
 					reason: 'combobox keydown: ArrowDown'
@@ -276,12 +273,17 @@ export async function handleComboboxKeyDown(input: {
 
 		case 'Up':
 		case 'ArrowUp': {
-			if (
-				!state.isListboxOpen &&
+			let isActiveOptionChanged: boolean = false;
+
+			const canContinue =
+				state.isListboxOpen ||
 				(await input.hooks.checkIfListboxCanOpen({
-					reason: 'combobox keydown: ArrowUp'
-				}))
-			) {
+					reason: 'combobox keydown: ArrowDown'
+				}));
+
+			if (!canContinue) return;
+
+			if (!state.isListboxOpen) {
 				state = await collectStateUpdates(
 					state,
 					async (updateState) => {
@@ -312,6 +314,7 @@ export async function handleComboboxKeyDown(input: {
 					});
 
 					if (state.activeOption != optionToActivate) {
+						isActiveOptionChanged = true;
 						state = await input.hooks.updateState({
 							state: { activeOption: optionToActivate ?? null },
 							reason: optionToActivate
@@ -322,7 +325,6 @@ export async function handleComboboxKeyDown(input: {
 				}
 			}
 
-			let isActiveOptionChanged: boolean = false;
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -355,7 +357,8 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
-			if (state.autocomplete === 'both' && isActiveOptionChanged && state.activeOption) {
+			const behavior = getBehavior(state);
+			if (behavior.canShowInlineSuggestions && isActiveOptionChanged && state.activeOption) {
 				input.hooks.setComboboxValue?.({
 					value: state.activeOption,
 					reason: 'combobox keydown: ArrowUp'
@@ -393,8 +396,8 @@ export async function handleComboboxKeyDown(input: {
 							});
 						}
 
-						if (input.hooks.triggerChange) {
-							await input.hooks.triggerChange({
+						if (input.hooks.commitValue) {
+							await input.hooks.commitValue({
 								reason: 'combobox keydown: Esc'
 							});
 						}
@@ -432,17 +435,9 @@ export async function handleComboboxKeyDown(input: {
 						});
 					}
 
-					if (input.value !== state.valueOnLastChange) {
-						if (input.hooks.triggerChange) {
-							await input.hooks.triggerChange({
-								reason: 'combobox keydown: Tab'
-							});
-						}
-
-						updateState({
-							state: {
-								valueOnLastChange: input.value
-							}
+					if (input.hooks.commitValue) {
+						await input.hooks.commitValue({
+							reason: 'combobox keydown: Tab'
 						});
 					}
 				},
@@ -662,7 +657,7 @@ export async function handleRootFocusOut(input: {
 	value: string;
 	hooks: {
 		updateState: Hooks['updateState'];
-		triggerChange?: Hooks['triggerChange'];
+		commitValue?: Hooks['commitValue'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -682,17 +677,9 @@ export async function handleRootFocusOut(input: {
 				}
 			});
 
-			if (input.value !== state.valueOnLastChange) {
-				if (input.hooks.triggerChange) {
-					await input.hooks.triggerChange({
-						reason: 'root focusout'
-					});
-				}
-
-				updateState({
-					state: {
-						valueOnLastChange: input.value
-					}
+			if (input.hooks.commitValue) {
+				await input.hooks.commitValue({
+					reason: 'root focusout'
 				});
 			}
 		},
@@ -723,7 +710,7 @@ export async function handleOptionClick(input: {
 		updateState: Hooks['updateState'];
 		setComboboxValue?: Hooks['setComboboxValue'];
 		focusCombobox?: Hooks['focusCombobox'];
-		triggerChange?: Hooks['triggerChange'];
+		commitValue?: Hooks['commitValue'];
 	};
 }): Promise<void> {
 	let state = input.state;
@@ -760,17 +747,9 @@ export async function handleOptionClick(input: {
 				});
 			}
 
-			if (input.option !== state.valueOnLastChange) {
-				if (input.hooks.triggerChange) {
-					await input.hooks.triggerChange({
-						reason: 'option click'
-					});
-				}
-
-				updateState({
-					state: {
-						valueOnLastChange: input.option
-					}
+			if (input.hooks.commitValue) {
+				await input.hooks.commitValue({
+					reason: 'option click'
 				});
 			}
 		},
@@ -981,13 +960,13 @@ export function getBehavior(state: State) {
 		 *
 		 * When `false` the options in the listbox should be static and not change.
 		 */
-		canFilterOptionsInListbox: state.autocomplete !== 'none',
+		canFilterOptionsInListbox: state.autocomplete === 'list' || state.autocomplete === 'both',
 		/**
 		 * When `true` the current active option should be set as combobox value and inline suggestions should be shown on user input.
 		 *
 		 * When `false` the user input should be preserved until the user selects an option.
 		 */
-		canShowInlineSuggestions: state.autocomplete === 'both'
+		canShowInlineSuggestions: state.autocomplete === 'both' || state.autocomplete === 'inline'
 	};
 }
 
@@ -1047,10 +1026,8 @@ type UpdateStateReason =
 	| 'root pointerover'
 	| 'root pointerout'
 	| 'root focusout'
-	| 'combobox input'
+	| 'combobox input: insert'
 	| 'combobox input: delete'
-	| 'combobox input: filter match'
-	| 'combobox input: filter doesnt match'
 	| 'combobox keydown: ArrowDown'
 	| 'combobox keydown: ArrowDown: filter match'
 	| 'combobox keydown: ArrowDown: filter doesnt match'
@@ -1083,9 +1060,10 @@ export type setComboboxValueReason =
 	| 'option click';
 export type ClearComboboxReason = 'combobox keydown: Esc';
 export type FocusComboboxReason = 'button click' | 'option click';
-export type ShowInlineSuggestionReason = 'combobox input';
+export type ShowInlineSuggestionReason = 'combobox input: insert' | 'combobox input: delete';
 export type FindOptionToActivatenReason =
-	| 'combobox input'
+	| 'combobox input: insert'
+	| 'combobox input: delete'
 	| 'combobox keydown: ArrowDown'
 	| 'combobox keydown: ArrowUp'
 	| 'combobox click'
@@ -1095,19 +1073,21 @@ export type GetNextOptionReason = 'combobox keydown: ArrowDown';
 export type GetPreviousOptionReason = 'combobox keydown: ArrowUp';
 export type CheckIfListboxCanOpenReason =
 	| 'button click'
-	| 'combobox input'
+	| 'combobox input: insert'
+	| 'combobox input: delete'
 	| 'combobox click'
 	| 'combobox keydown: ArrowUp'
 	| 'combobox keydown: ArrowDown'
 	| 'open';
 export type PrepareOptionsReason =
-	| 'combobox input'
+	| 'combobox input: insert'
+	| 'combobox input: delete'
 	| 'combobox keydown: ArrowDown'
 	| 'combobox keydown: ArrowUp'
 	| 'combobox click'
 	| 'button click'
 	| 'open';
-export type TriggerChangeReason =
+export type CommitValueReason =
 	| 'combobox change'
 	| 'combobox keydown: Enter'
 	| 'combobox keydown: Tab'
@@ -1257,13 +1237,13 @@ export interface Hooks {
 	/**
 	 * Called when the change event is expected to be triggered.
 	 */
-	triggerChange?: (input: {
+	commitValue?: (input: {
 		/**
-		 * The reason why {@link triggerChange} is called.
+		 * The reason why {@link commitValue} is called.
 		 *
 		 * Can be used to implement custom logics.
 		 */
-		reason: TriggerChangeReason;
+		reason: CommitValueReason;
 	}) => Promise<void>;
 }
 
@@ -1273,7 +1253,7 @@ export interface State {
 	 *
 	 * @see https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Attributes/aria-autocomplete
 	 */
-	autocomplete: 'none' | 'both' | 'list';
+	autocomplete: 'none' | 'both' | 'list' | 'inline';
 	/**
 	 * Define the open/closed state of the listbox.
 	 */
@@ -1288,8 +1268,4 @@ export interface State {
 	 * Can be used to apply some highlighting on the element.
 	 */
 	activeOption: string | null;
-	/**
-	 * The value of the combobox last time a change event was triggered.
-	 */
-	valueOnLastChange: string | null;
 }

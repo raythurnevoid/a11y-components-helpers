@@ -5,8 +5,8 @@ const cancelMap = new WeakMap<object, DebounceState>();
  * @returns a promise that resolves to a function that returns `true` if the execution has been overlapped by another execution with the same key
  */
 export function debounce(options: {
-	delay?: number;
 	key?: Function | symbol | object;
+	delay?: number;
 }): PromiseLike<() => HasOverlap> {
 	const p = new Promise<() => HasOverlap>((resolve) => {
 		const key = (options.key ?? Symbol('debounce default key')) as any;
@@ -27,11 +27,9 @@ export function debounce(options: {
 		cancelMap.set(key, state);
 
 		if (options.delay) {
-			state.timeout = setTimeout(() => {
-				state.timeout = null;
-
+			waitFor({ delay: options.delay }).then(() => {
 				resolve(() => state.hasOverlap);
-			}, options.delay);
+			});
 		} else {
 			resolve(() => state.hasOverlap);
 		}
@@ -47,3 +45,21 @@ interface DebounceState {
 }
 
 export type HasOverlap = boolean;
+
+export async function waitFor(
+	options:
+		| {
+				dependency: () => Promise<CanContinue>;
+		  }
+		| {
+				delay: number;
+		  }
+) {
+	if ('dependency' in options) {
+		while (!(await options.dependency())) {}
+	} else if ('delay' in options) {
+		await new Promise((resolve) => setTimeout(resolve, options.delay));
+	}
+}
+
+export type CanContinue = boolean;

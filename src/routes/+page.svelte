@@ -1,17 +1,17 @@
 <svelte:options immutable={true} />
 
 <script lang="ts">
-	import ListAutocomplete from '../lib/components/examples/ListAutocomplete.svelte';
+	import Autocomplete from '../lib/components/examples/Autocomplete.svelte';
 
-	let state: ListAutocomplete['$$prop_def']['state'];
+	let state: Autocomplete['$$prop_def']['state'];
 </script>
 
 <main>
-	<!-- <ListAutocomplete autocomplete="list" />
-	<ListAutocomplete autocomplete="both" />
-	<ListAutocomplete autocomplete="both" />
-	<ListAutocomplete autocomplete="both" /> -->
-	<ListAutocomplete bind:state autocomplete="both" />
+	<!-- <Autocomplete autocomplete="list" />
+	<Autocomplete autocomplete="both" />
+	<Autocomplete autocomplete="both" />
+	<Autocomplete autocomplete="both" /> -->
+	<Autocomplete bind:state label="State" autocomplete="inline" />
 
 	<aside id="state">
 		<pre>{JSON.stringify(state, null, 2)}</pre>
