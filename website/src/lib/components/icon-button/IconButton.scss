@@ -1,0 +1,6 @@
+@use '$lib/styles/material-theme.scss';
+@use '@material/icon-button/icon-button.scss';
+
+@layer material {
+	@include icon-button.core-styles;
+}

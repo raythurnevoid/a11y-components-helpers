@@ -1,19 +1,33 @@
+<script lang="ts" context="module">
+	let index: number = 0;
+</script>
+
 <script lang="ts">
-	import * as autocompleteHelpers from '$lib/lib/combobox/autocomplete.js';
+	import * as autocompleteHelpers from '@raythurnevoid/a11y-components-helpers/autocomplete';
 	import * as api from './suggestions.js';
-	import { onMount } from 'svelte';
-	import { debounce } from '$lib/debounce.js';
+	import { onMount, createEventDispatcher } from 'svelte';
+	import { debounce, waitFor } from '$lib/debounce.js';
 	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
 
-	export let autocomplete: 'list' | 'both' | 'none';
+	export let id: string = `Autocomplete-${index++}`;
+
+	export let value: string = '';
+	export let autocomplete: 'list' | 'both' | 'inline' | 'none' = 'both';
+	export let label: string = '';
+	export let disabled: boolean = false;
+	export let readonly: boolean = false;
 
 	export let state = autocompleteHelpers.setState({
 		autocomplete,
 		isListboxOpen: false,
 		elementWithFocus: null,
-		activeOption: null,
-		valueOnLastChange: null
+		activeOption: null
 	});
+
+	const dispatch = createEventDispatcher<{
+		change: { value: string };
+		input: { value: string };
+	}>();
 
 	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
 
@@ -31,12 +45,11 @@
 			let result = true;
 
 			filter = value;
-			result = await fetchSuggestions({
-				filter: behavior.canFilterOptionsInListbox ? filter : ''
-			});
 
-			if (!result) {
-				state.isListboxOpen = false;
+			if (behavior.canFilterOptionsInListbox) {
+				result = await fetchSuggestions({ filter });
+			} else {
+				result = await fetchSuggestions({ filter: '' });
 			}
 
 			return result;
@@ -48,31 +61,38 @@
 			return getPreviousOption(input.option);
 		},
 		findOptionToActivate: async (input) => {
-			if (!suggestions || !value) return;
+			if (input.reason === 'combobox input: delete') {
+				return null;
+			}
+
+			if (!suggestions || !filter) return;
 
 			let optionToActivate: string | null = null;
 
 			if (state.activeOption != null && suggestions.indexOf(state.activeOption) >= 0) {
 				optionToActivate = state.activeOption;
-			} else {
-				const firstSuggestion = suggestions.at(0)!;
-
-				if (firstSuggestion?.toLocaleLowerCase().startsWith(value.toLowerCase())) {
-					optionToActivate = firstSuggestion;
-				}
+			} else if (input.reason !== 'combobox click') {
+				optionToActivate =
+					suggestions?.find((option) => option.toLowerCase().startsWith(filter.toLowerCase())) ??
+					null;
 			}
 
 			return optionToActivate;
 		},
 		setComboboxValue: async (input) => {
-			value = input.value ?? '';
+			canCommitValue = true;
+			comboboxEl.value = value = input.value ?? '';
+			setComboboxSelectionRange({
+				start: value.length,
+				end: value.length
+			});
 		},
 		focusCombobox: async () => {
 			comboboxEl.focus();
 		},
 		showInlineSuggestion: async () => {
 			if (state.activeOption) {
-				comboboxEl.value = value = state.activeOption;
+				comboboxEl.value = value = state.activeOption ?? '';
 				setComboboxSelectionRange({
 					start: filter.length,
 					end: state.activeOption.length
@@ -80,8 +100,24 @@
 			}
 		},
 		checkIfListboxCanOpen: async () => {
-			return true;
+			return !disabled && !readonly;
+		},
+		commitValue: async () => {
+			if (!canCommitValue) return;
+
+			let shouldDispatchChange = valueOnLastChange !== value;
+
+			if (shouldDispatchChange) {
+				valueOnLastChange = value;
+				dispatch('change', { value });
+				canCommitValue = false;
+			}
 		}
+	});
+
+	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({
+		state,
+		activeOptionId
 	});
 
 	let behavior = autocompleteHelpers.getBehavior(state);
@@ -89,20 +125,23 @@
 	let rootEl: HTMLElement;
 	let comboboxEl: HTMLInputElement;
 	let listboxEl: HTMLElement;
+	let listboxId: string = `${id}__listbox`;
+	let inputId: string = `${id}__input`;
+
+	let filter: string = value;
+	let valueOnLastChange: string | null = value;
+	let canCommitValue: boolean = false;
 
 	let errorMessage: string | null = null;
 	let loading: boolean = false;
 	let suggestions: string[] = [];
 	let cachedFilter: string | null | undefined = undefined;
 
-	let value: string = '';
-	let filter: string = value;
-
-	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({ state, activeOptionId });
-
 	let elementInViewChecker: ElementInViewChecker;
 
 	onMount(() => {
+		comboboxEl = rootEl.querySelector('input')!;
+
 		elementInViewChecker = new ElementInViewChecker(listboxEl);
 
 		() => {
@@ -112,17 +151,20 @@
 
 	async function fetchSuggestions(input: { filter: string }) {
 		try {
+			const checkHasOverlap = await debounce({
+				key: fetchSuggestions
+			});
+
+			errorMessage = null;
+
 			if (cachedFilter === input.filter) {
+				loading = false;
 				return true;
 			}
 
-			errorMessage = null;
-			cachedFilter = input.filter;
-
 			loading = true;
 
-			const checkHasOverlap = await debounce({
-				key: fetchSuggestions,
+			await waitFor({
 				delay: 100
 			});
 			if (checkHasOverlap()) return false;
@@ -143,14 +185,13 @@
 			if (checkHasOverlap()) return false;
 
 			suggestions = responseBody;
+			cachedFilter = input.filter;
 			loading = false;
 
 			return true;
 		} catch (e) {
 			const error = e as Error;
 			errorMessage = error.message;
-
-			suggestions = [];
 			loading = false;
 
 			return false;
@@ -158,7 +199,7 @@
 	}
 
 	function findComboboxValueMatch() {
-		return suggestions.find((option) => option === value);
+		return suggestions?.find((option) => option === value);
 	}
 
 	async function setComboboxSelectionRange(input: { start: number; end: number }) {
@@ -223,7 +264,7 @@
 	}
 
 	function getOptionId(option: string) {
-		return `cb1-option-${option}`;
+		return `${id}__option:${option}`;
 	}
 
 	async function handleActiveOptionChange() {
@@ -233,7 +274,7 @@
 	}
 
 	async function handleRootFocusOut(event: FocusEvent) {
-		await autocompleteHelpers.handleRootFocusOut({ state, rootEl, event, value, hooks });
+		await autocompleteHelpers.handleRootFocusOut({ state, rootEl, value, event, hooks });
 	}
 
 	async function handleOptionClick(input: { option: string }) {
@@ -256,7 +297,7 @@
 		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, hooks });
 	}
 
-	async function handleComboboxClick(event: MouseEvent) {
+	async function handleComboboxClick() {
 		await autocompleteHelpers.handleComboboxClick({
 			state,
 			hooks
@@ -271,24 +312,41 @@
 	}
 
 	async function handleComboboxKeyDown(event: KeyboardEvent) {
+		const target = event.target as HTMLInputElement;
+
+		if (target.tagName !== 'INPUT') {
+			return;
+		}
+
 		await autocompleteHelpers.handleComboboxKeyDown({
 			state,
 			event,
-			value,
-			hooks
+			hooks,
+			value
 		});
 	}
 
 	async function handleComboboxInput(e: Event) {
+		dispatch('input', {
+			value
+		});
+
 		const event = e as InputEvent;
 		const target = event.target as HTMLInputElement;
 
+		canCommitValue = true;
 		value = target.value;
 
 		await autocompleteHelpers.handleComboboxInput({
 			state,
 			event,
 			hooks
+		});
+	}
+
+	async function handleChange(event: Event) {
+		await autocompleteHelpers.handleComboboxChange({
+			event
 		});
 	}
 </script>
@@ -300,16 +358,18 @@
 	class="Autocomplete Autocomplete__listbox-anchor"
 	on:focusout={handleRootFocusOut}
 >
-	<label class="Autocomplete__input-container" aria-label="State">
-		<span>State</span>
+	<label class="Autocomplete__input-container">
+		<span>{label}</span>
 
-		<div class="Autocomplete__input-group" class:focus={state.elementWithFocus === 'combobox'}>
+		<div {id} class="Autocomplete__input-group" class:focus={state.elementWithFocus === 'combobox'}>
 			<input
 				bind:this={comboboxEl}
-				id="Autocomplete__input"
+				id={inputId}
 				class="Autocomplete__input"
 				{value}
 				type="text"
+				{disabled}
+				{readonly}
 				role="combobox"
 				aria-expanded={a11yAttributes.combobox['aria-expanded']}
 				aria-autocomplete={autocomplete}
@@ -319,14 +379,16 @@
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleComboboxClick}
 				on:focus={handleComboboxFocus}
+				on:change={handleChange}
 			/>
+
 			<button
 				class="Autocomplete__button"
 				type="button"
 				tabindex="-1"
-				aria-label="State"
+				aria-label={label}
 				aria-expanded={a11yAttributes.button['aria-expanded']}
-				aria-controls="cb1-listbox"
+				aria-controls={listboxId}
 				on:click={handleButtonClick}
 			>
 				<svg
@@ -350,12 +412,12 @@
 
 	<div
 		bind:this={listboxEl}
-		id="Autocomplete__listbox"
+		id={listboxId}
 		class="Autocomplete__listbox"
 		class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
 		class:Autocomplete__listbox--open={state.isListboxOpen}
 		role="listbox"
-		aria-label="State"
+		aria-label={label}
 	>
 		{#if errorMessage}
 			<option disabled>{errorMessage}</option>

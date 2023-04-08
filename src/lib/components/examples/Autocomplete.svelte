@@ -368,8 +368,9 @@
 				class="Autocomplete__input"
 				{value}
 				type="text"
+				{disabled}
+				{readonly}
 				role="combobox"
-				autocomplete="offad"
 				aria-expanded={a11yAttributes.combobox['aria-expanded']}
 				aria-autocomplete={autocomplete}
 				aria-controls="Autocomplete__listbox"
@@ -385,9 +386,9 @@
 				class="Autocomplete__button"
 				type="button"
 				tabindex="-1"
-				aria-label="State"
+				aria-label={label}
 				aria-expanded={a11yAttributes.button['aria-expanded']}
-				aria-controls="cb1-listbox"
+				aria-controls={listboxId}
 				on:click={handleButtonClick}
 			>
 				<svg
@@ -416,7 +417,7 @@
 		class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
 		class:Autocomplete__listbox--open={state.isListboxOpen}
 		role="listbox"
-		aria-label="State"
+		aria-label={label}
 	>
 		{#if errorMessage}
 			<option disabled>{errorMessage}</option>

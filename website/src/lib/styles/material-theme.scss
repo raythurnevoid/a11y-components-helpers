@@ -1,0 +1,6 @@
+@use './colors.scss';
+@use '@material/theme' with (
+	$primary: colors.$material-theme--primary,
+	$secondary: colors.$material-theme--secondary,
+	$background: colors.$material-theme--background
+);

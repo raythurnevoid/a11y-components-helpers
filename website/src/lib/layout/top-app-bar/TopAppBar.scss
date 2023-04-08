@@ -1,0 +1,5 @@
+@use '$lib/styles/material-theme.scss';
+
+@layer material {
+	@import '@material/top-app-bar/mdc-top-app-bar.scss';
+}

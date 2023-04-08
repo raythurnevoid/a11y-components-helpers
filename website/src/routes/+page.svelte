@@ -1,10 +1,13 @@
 <svelte:options immutable={true} />
 
 <script lang="ts">
-	import Autocomplete from '../lib/components/examples/Autocomplete.svelte';
+	import Autocomplete from '$lib/components/examples/Autocomplete.svelte';
+	import TopAppBar from '$lib/layout/top-app-bar/TopAppBar.svelte';
 
 	let state: Autocomplete['$$prop_def']['state'];
 </script>
+
+<TopAppBar />
 
 <main>
 	<!-- <Autocomplete autocomplete="list" />
@@ -14,7 +17,7 @@
 	<Autocomplete bind:state label="State" autocomplete="inline" />
 
 	<aside id="state">
-		<pre><code>{JSON.stringify(state, null, 2)}</code></pre>
+		<pre><code>{JSON.stringify(state, null, 2)}=></code></pre>
 	</aside>
 </main>
 

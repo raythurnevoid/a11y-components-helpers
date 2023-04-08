@@ -1,0 +1,33 @@
+$material-theme--primary: #c70000;
+$material-theme--secondary: #676778;
+$material-theme--background: #fff;
+
+:root {
+	--mdc-theme-surface: $material-theme--background;
+
+	--color--primary: $material-theme--primary;
+	--color--secondary: $material-theme--secondary;
+	--color--background: $material-theme--background;
+
+	--color--on-background: black;
+
+	--color--code-snippet-background: #2d2d2d;
+	--color--snippet-border: #0000001f;
+
+	--color--scrollbar-thumb: #00000081;
+	--color--scrollbar-thumb--hover: #000000af;
+
+	@media (prefers-color-scheme: dark) {
+		--color--primary: #c70000;
+		--color--primary-darker: #860000;
+		--color--secondary: #676778;
+
+		--color--background: #1b1b1b;
+		--color--on-background: #ffffffce;
+
+		--color--snippet-border: #ffffff1f;
+
+		--color--scrollbar-thumb: #ffffff81;
+		--color--scrollbar-thumb--hover: #ffffffaf;
+	}
+}
