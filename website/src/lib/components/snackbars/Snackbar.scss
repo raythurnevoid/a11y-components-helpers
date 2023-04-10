@@ -1,0 +1,6 @@
+@use '$lib/styles/material-theme.scss';
+@use '@material/snackbar/index.scss' as snackbar;
+
+@layer material {
+	@include snackbar.core-styles;
+}

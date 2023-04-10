@@ -52,17 +52,15 @@
 		</div>
 	</header>
 	<div class="TopAppBar__menu-container">
-		<div class="TopAppBar__menu-wrapper">
-			<Menu open={isMenuOpen} />
-		</div>
+		<Menu open={isMenuOpen} />
 	</div>
 </div>
 
 <style lang="scss">
 	.TopAppBar {
-		display: flex;
-		flex-direction: column;
-		height: 100vb;
+		position: sticky;
+		inset-block-start: 0;
+		z-index: 2;
 
 		@media (prefers-color-scheme: dark) {
 			:global(.mdc-top-app-bar--fixed-scrolled) {
@@ -73,20 +71,14 @@
 	}
 
 	.TopAppBar__menu-container {
-		flex: 1;
-		position: relative;
-		z-index: 1;
-	}
-
-	.TopAppBar__menu-wrapper {
-		contain: paint;
-		height: 100%;
+		position: absolute;
+		height: calc(100vb - 64px);
+		width: 100%;
+		pointer-events: none;
 	}
 
 	.mdc-top-app-bar {
-		position: sticky;
-		inset-block-start: 0;
-		z-index: 1;
+		position: relative;
 	}
 
 	.TopAppBar__title {

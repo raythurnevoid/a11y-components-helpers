@@ -1,12 +1,38 @@
 <script lang="ts" context="module">
 	let index: number = 0;
+
+	export async function mockApi(filter: string) {
+		return new Promise<Response>((resolve) => {
+			setTimeout(() => {
+				const results = options.filter((option) =>
+					filter ? option.toLowerCase().includes(filter.toLowerCase()) : true
+				);
+
+				if (results.length === 0) {
+					resolve(new Response('', { status: 404 }));
+				}
+
+				resolve(new Response(JSON.stringify(results), { status: 200 }));
+			}, 200);
+		});
+	}
+
+	let options: string[] = [
+		'New York',
+		'Los Angeles',
+		'San Francisco',
+		'Washington',
+		'St. Louis',
+		'Chicago',
+		'Atlanta',
+		'Phoenix',
+		'Philadelphia'
+	];
 </script>
 
 <script lang="ts">
 	import * as autocompleteHelpers from '@raythurnevoid/a11y-components-helpers/autocomplete';
-	import * as api from './suggestions.js';
 	import { onMount, createEventDispatcher } from 'svelte';
-	import { debounce, waitFor } from '$lib/debounce.js';
 	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
 
 	export let id: string = `Autocomplete-${index++}`;
@@ -151,10 +177,6 @@
 
 	async function fetchSuggestions(input: { filter: string }) {
 		try {
-			const checkHasOverlap = await debounce({
-				key: fetchSuggestions
-			});
-
 			errorMessage = null;
 
 			if (cachedFilter === input.filter) {
@@ -164,14 +186,7 @@
 
 			loading = true;
 
-			await waitFor({
-				delay: 100
-			});
-			if (checkHasOverlap()) return false;
-
-			const response = await api.fetchSuggestions(input.filter);
-			if (checkHasOverlap()) return false;
-
+			const response = await mockApi(input.filter);
 			if (response.status === 404) {
 				loading = false;
 				throw new Error('No results found');
@@ -182,7 +197,6 @@
 			}
 
 			const responseBody = await response.json();
-			if (checkHasOverlap()) return false;
 
 			suggestions = responseBody;
 			cachedFilter = input.filter;

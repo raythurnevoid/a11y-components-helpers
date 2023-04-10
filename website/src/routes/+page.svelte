@@ -1,35 +1,33 @@
 <svelte:options immutable={true} />
 
 <script lang="ts">
+	import ShellSnippet from '$lib/components/shell-snippet/ShellSnippet.svelte';
+	import TopAppBar from '$lib/components/layout/top-app-bar/TopAppBar.svelte';
+	import Page from '$lib/components/layout/Page.svelte';
+	import ExampleResultPanel from '$lib/components/example-result-panel/ExampleResultPanel.svelte';
 	import Autocomplete from '$lib/components/examples/Autocomplete.svelte';
-	import TopAppBar from '$lib/layout/top-app-bar/TopAppBar.svelte';
+	import CodeSnippet from '../lib/components/code-snippet/CodeSnippet.svelte';
+	import type { PageData } from './$types.js';
 
-	let state: Autocomplete['$$prop_def']['state'];
+	export let data: PageData;
 </script>
 
 <TopAppBar />
 
-<main>
-	<!-- <Autocomplete autocomplete="list" />
-	<Autocomplete autocomplete="both" />
-	<Autocomplete autocomplete="both" />
-	<Autocomplete autocomplete="both" /> -->
-	<Autocomplete bind:state label="State" autocomplete="inline" />
-
-	<aside id="state">
-		<pre><code>{JSON.stringify(state, null, 2)}=></code></pre>
-	</aside>
-</main>
-
-<style>
-	main {
-		display: flex;
-	}
-
-	#state {
-		position: fixed;
-		right: 16px;
-		padding: 16px;
-		border: 5px gray inset;
-	}
-</style>
+<Page>
+	<section>
+		<h1>Installation</h1>
+		<ShellSnippet>npm i -D @raythurnevoid/a11y-components-helpers</ShellSnippet>
+	</section>
+	<section>
+		<h1>Getting Started</h1>
+		<CodeSnippet
+			fileName="Autocomplete.svelte"
+			source={data.snippets['Autocomplete.svelte']}
+			showFullSourceButton
+		/>
+		<ExampleResultPanel>
+			<Autocomplete />
+		</ExampleResultPanel>
+	</section>
+</Page>

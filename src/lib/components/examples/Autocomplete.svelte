@@ -3,10 +3,9 @@
 </script>
 
 <script lang="ts">
-	import * as autocompleteHelpers from '$lib/lib/combobox/autocomplete.js';
+	import * as autocompleteHelpers from '$lib/lib/autocomplete/autocomplete.js';
 	import * as api from './suggestions.js';
 	import { onMount, createEventDispatcher } from 'svelte';
-	import { debounce, waitFor } from '$lib/debounce.js';
 	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
 
 	export let id: string = `Autocomplete-${index++}`;
@@ -151,10 +150,6 @@
 
 	async function fetchSuggestions(input: { filter: string }) {
 		try {
-			const checkHasOverlap = await debounce({
-				key: fetchSuggestions
-			});
-
 			errorMessage = null;
 
 			if (cachedFilter === input.filter) {
@@ -164,14 +159,7 @@
 
 			loading = true;
 
-			await waitFor({
-				delay: 100
-			});
-			if (checkHasOverlap()) return false;
-
 			const response = await api.fetchSuggestions(input.filter);
-			if (checkHasOverlap()) return false;
-
 			if (response.status === 404) {
 				loading = false;
 				throw new Error('No results found');
@@ -182,7 +170,6 @@
 			}
 
 			const responseBody = await response.json();
-			if (checkHasOverlap()) return false;
 
 			suggestions = responseBody;
 			cachedFilter = input.filter;

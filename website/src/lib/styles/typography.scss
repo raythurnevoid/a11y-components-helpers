@@ -1,10 +1,64 @@
-@use '@fontsource/roboto/300.css' as roboto-300;
-@use '@fontsource/roboto/400.css' as roboto-400;
+@use '@material/typography/typography.scss';
+@use '@fontsource/roboto/scss/mixins.scss' as roboto;
+
+$font-display: swap;
+@include roboto.fontFaceCustom($display: __FONT_DISPLAY__);
+@include roboto.fontFaceCustom($display: __FONT_DISPLAY__, $weight: 300);
 
 body {
-	font-family: 'Roboto', Arial;
+	@extend .mdc-typography--body1;
 }
 
 code {
 	font-family: 'Fira Mono', Consolas, monospace;
+}
+
+pre {
+	line-height: 1.4em;
+}
+
+h1,
+h2,
+h6 {
+	margin-block: 2rem;
+}
+
+h1 {
+	font-size: 3rem;
+	line-height: 1em;
+}
+
+h2 {
+	font-size: 2.5rem;
+	line-height: 1em;
+}
+
+h6 {
+	font-size: 1.25rem;
+	line-height: 1em;
+}
+
+a {
+	color: var(--color--primary);
+	text-decoration: none;
+
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
+@layer material {
+	@include typography.core-styles;
+
+	h1 {
+		@extend .mdc-typography--headline1;
+	}
+
+	h2 {
+		@extend .mdc-typography--headline2;
+	}
+
+	h6 {
+		@extend .mdc-typography--headline6;
+	}
 }

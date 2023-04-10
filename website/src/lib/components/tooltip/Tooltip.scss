@@ -1,0 +1,6 @@
+@use '$lib/styles/material-theme.scss';
+@use '@material/tooltip/tooltip.scss';
+
+@layer material {
+	@include tooltip.core-styles;
+}

@@ -1,6 +1,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { env } from 'process';
+import autoprefixer from 'autoprefixer'
 
 const isProduction = env.NODE_ENV === 'production' ? true : false;
 
@@ -8,7 +9,7 @@ const fontDisplay = isProduction ? 'optional' : 'swap';
 
 if (!isProduction) {
 	// css-transform has not effect with sveltekit in dev, the replacement has to be done in hooks.server.ts
-	env.SCE_DEV_FONT_DISPLAY = fontDisplay;
+	env.A11YCH_DEV_FONT_DISPLAY = fontDisplay;
 }
 
 export default defineConfig({
@@ -22,5 +23,12 @@ export default defineConfig({
 				}
 			}
 		}
-	]
+	],
+	css: {
+    postcss: {
+      plugins: [
+        autoprefixer() 
+      ],
+    }
+  }
 });

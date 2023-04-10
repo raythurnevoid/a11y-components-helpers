@@ -23,11 +23,11 @@
 		border-end-end-radius: 100%;
 		transition: max-height 0.2s ease-out 0.1s, max-width 0.3s ease-out 0.2s,
 			border-end-end-radius 0.3s ease-out;
-		z-index: -1;
 		contain: paint;
 		max-height: 0%;
 		max-width: 70%;
 		height: var(--Menu--max-height);
+		pointer-events: all;
 	}
 
 	.Menu--open {

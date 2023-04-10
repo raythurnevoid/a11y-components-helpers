@@ -60,7 +60,6 @@
 
 		function handleLoad() {
 			function handleInteraction() {
-				console.log('INTERACTION');
 				allowImport();
 				window.removeEventListener('pointermove', handleInteraction);
 				window.removeEventListener('pointerdown', handleInteraction);
