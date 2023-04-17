@@ -1,5 +1,5 @@
 @use './colors.scss';
-@use '@material/theme' with (
+@forward '@material/theme/index.scss' with (
 	$primary: colors.$material-theme--primary,
 	$secondary: colors.$material-theme--secondary,
 	$background: colors.$material-theme--background

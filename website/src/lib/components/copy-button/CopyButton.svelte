@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
 	import IconButton from '$lib/components/icon-button/IconButton.svelte';
 	import { openSnackbar } from '$lib/components/snackbars/Snackbars.svelte';
@@ -20,18 +18,19 @@
 </div>
 
 <style lang="scss">
-	.CopyButton {
-		position: absolute;
-		inset: 8px 8px auto auto;
+	@use '$lib/styles/material-theme.scss';
 
+	.CopyButton {
 		:global(.mdc-icon-button) {
-			background: var(--color--background);
+			// hint text color
+			background: var(--color--tertiary);
+			// background: var(--color--background);
 			border-radius: 50%;
 			transition: opacity 0.1s ease-in-out;
 		}
 
 		:global(.mdc-icon-button:not(:hover)) {
-			opacity: 0.2;
+			opacity: 0.8;
 		}
 
 		:global(.mdc-icon-button:hover),

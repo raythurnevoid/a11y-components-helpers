@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
 	import { MDCSnackbar } from '@material/snackbar';
 	import { createEventDispatcher, onDestroy, onMount } from 'svelte';

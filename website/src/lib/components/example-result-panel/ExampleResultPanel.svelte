@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <div class="ExampleResultPanel">
 	<slot />
 </div>

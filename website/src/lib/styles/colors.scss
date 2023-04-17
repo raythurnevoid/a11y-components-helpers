@@ -7,8 +7,9 @@ $material-theme--background: #fff;
 
 	--color--primary: #{$material-theme--primary};
 	--color--secondary: #{$material-theme--secondary};
-	--color--background: #{$material-theme--background};
+	--color--tertiary: #eeeeee;
 
+	--color--background: #{$material-theme--background};
 	--color--on-background: black;
 
 	--color--code-snippet-background: #2d2d2d;
@@ -21,6 +22,7 @@ $material-theme--background: #fff;
 		--color--primary: #{$material-theme--primary};
 		--color--primary-darker: #860000;
 		--color--secondary: #{$material-theme--secondary};
+		--color--tertiary: #2d2d2d;
 
 		--color--background: #1b1b1b;
 		--color--on-background: #ffffffce;

@@ -1,7 +1,12 @@
+@use '$lib/styles/material-theme.scss';
 @use '$lib/styles/typography.scss';
 @use '$lib/styles/colors.scss';
 
 @layer material, prismjs;
+
+@layer material {
+	@include material-theme.core-styles
+}
 
 * {
 	box-sizing: border-box;

@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
 	import ShellSnippet from '$lib/components/shell-snippet/ShellSnippet.svelte';
 	import TopAppBar from '$lib/components/layout/top-app-bar/TopAppBar.svelte';

@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
 	import './TopAppBar.scss';
 	import { base } from '$app/paths';

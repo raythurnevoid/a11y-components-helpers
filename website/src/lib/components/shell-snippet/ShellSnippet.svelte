@@ -1,25 +1,26 @@
 <script lang="ts">
-	import CopyButton from '$lib/components/copy-button/CopyButton.svelte';
+	import CodeActions from '../code-actions/CodeActions.svelte';
 
 	let snippetEl: HTMLPreElement;
 </script>
 
 <div class="ShellSnippet">
-	<CopyButton copyFromEl={snippetEl} />
 	<pre bind:this={snippetEl} class="ShellSnippet__snippet"><code><slot /></code></pre>
+	<CodeActions targetEl={snippetEl} />
 </div>
 
 <style lang="scss">
 	.ShellSnippet {
+		--ShellSnippet__snippet--padding: 16px;
+
 		position: relative;
 		margin-block: 1rem;
 		border: 1px solid var(--color--snippet-border);
 		border-radius: 8px;
 
-		@media (prefers-color-scheme: dark) {
-			:global(.CopyButton .mdc-icon-button) {
-				background: var(--color--code-snippet-background);
-			}
+		:global(.CodeActions) {
+			top: calc(var(--ShellSnippet__snippet--padding) / 4);
+			right: calc(-1 * (48px + 8px));
 		}
 	}
 
@@ -27,8 +28,6 @@
 		margin-block: 0;
 		overflow: overlay;
 
-		padding-inline: 16px;
-		// The padding makes the content aligned with the copy button that has a margin of 8px
-		padding-block: calc(16px + 8px);
+		padding: var(--ShellSnippet__snippet--padding);
 	}
 </style>

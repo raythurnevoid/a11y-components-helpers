@@ -1,5 +1,3 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
 	import '../app.scss';
 	import Snackbars from '$lib/components/snackbars/Snackbars.svelte';
