@@ -28,7 +28,30 @@
 		input: { value: string };
 	}>();
 
+	let behavior = autocompleteHelpers.getBehavior(state);
+
+	let rootEl: HTMLElement;
+	let comboboxEl: HTMLInputElement;
+	let listboxEl: HTMLElement;
+	let listboxId: string = `${id}__listbox`;
+	let inputId: string = `${id}__input`;
 	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
+
+	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({
+		state,
+		activeOptionId
+	});
+
+	let filter: string = value;
+	let valueOnLastChange: string | null = value;
+	let canCommitValue: boolean = false;
+
+	let errorMessage: string | null = null;
+	let loading: boolean = false;
+	let suggestions: string[] = [];
+	let cachedFilter: string | null | undefined = undefined;
+
+	let elementInViewChecker: ElementInViewChecker;
 
 	let hooks = autocompleteHelpers.setHooks({
 		updateState: async (input) => {
@@ -113,30 +136,6 @@
 			}
 		}
 	});
-
-	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({
-		state,
-		activeOptionId
-	});
-
-	let behavior = autocompleteHelpers.getBehavior(state);
-
-	let rootEl: HTMLElement;
-	let comboboxEl: HTMLInputElement;
-	let listboxEl: HTMLElement;
-	let listboxId: string = `${id}__listbox`;
-	let inputId: string = `${id}__input`;
-
-	let filter: string = value;
-	let valueOnLastChange: string | null = value;
-	let canCommitValue: boolean = false;
-
-	let errorMessage: string | null = null;
-	let loading: boolean = false;
-	let suggestions: string[] = [];
-	let cachedFilter: string | null | undefined = undefined;
-
-	let elementInViewChecker: ElementInViewChecker;
 
 	onMount(() => {
 		comboboxEl = rootEl.querySelector('input')!;

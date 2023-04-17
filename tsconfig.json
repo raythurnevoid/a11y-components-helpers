@@ -2,7 +2,7 @@
 	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
 		"moduleResolution": "NodeNext",
-		"verbatimModuleSyntax": true,
+		// "verbatimModuleSyntax": true,
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
 	},

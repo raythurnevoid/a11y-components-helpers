@@ -1,16 +1,10 @@
-<svelte:options immutable={true} />
-
 <script lang="ts">
-	import Autocomplete from '../lib/components/examples/Autocomplete.svelte';
+	import Autocomplete from '$lib/components/examples/autocomplete/Autocomplete.svelte';
 
 	let state: Autocomplete['$$prop_def']['state'];
 </script>
 
 <main>
-	<!-- <Autocomplete autocomplete="list" />
-	<Autocomplete autocomplete="both" />
-	<Autocomplete autocomplete="both" />
-	<Autocomplete autocomplete="both" /> -->
 	<Autocomplete bind:state label="State" autocomplete="inline" />
 
 	<aside id="state">

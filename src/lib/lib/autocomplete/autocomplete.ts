@@ -135,6 +135,11 @@ export async function handleComboboxKeyDown(input: {
 		case 'Enter': {
 			const currentActiveOption = state.activeOption;
 
+			if (state.isListboxOpen) {
+				// do not prevent form submit when the listbox is closed
+				shouldPreventDefault = true;
+			}
+
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
@@ -171,7 +176,6 @@ export async function handleComboboxKeyDown(input: {
 					})
 			);
 
-			shouldPreventDefault = true;
 			break;
 		}
 
@@ -929,7 +933,13 @@ export async function open(input: {
 /**
  * Helps to correctly assign aria attributes to your elements for the given state.
  */
-export function getA11yAttributes(input: { state: State; activeOptionId: string | null }) {
+export function getA11yAttributes(input: {
+	state: State;
+	/**
+	 * The id of the active option, if any.
+	 */
+	activeOptionId: string | null;
+}) {
 	const activedescendant =
 		input.state.isListboxOpen && input.activeOptionId ? input.activeOptionId : '';
 
