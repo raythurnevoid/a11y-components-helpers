@@ -848,7 +848,7 @@ export async function close(input: {
 	hooks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	state = await collectStateUpdates(
@@ -858,8 +858,6 @@ export async function close(input: {
 		},
 		async (state) => input.hooks.updateState({ state, reason: 'close' })
 	);
-
-	return state;
 }
 
 async function updateStateOnOpen(input: {
@@ -892,11 +890,11 @@ export async function open(input: {
 		prepareOptions?: Hooks['prepareOptions'];
 		findOptionToActivate?: Hooks['findOptionToActivate'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	if (!(await input.hooks.checkIfListboxCanOpen?.({ reason: 'open' }))) {
-		return state;
+		return;
 	}
 
 	state = await collectStateUpdates(
@@ -926,8 +924,6 @@ export async function open(input: {
 			});
 		}
 	}
-
-	return state;
 }
 
 /**
@@ -999,21 +995,25 @@ async function collectStateUpdates(
 	collector: (updateState: (input: UpdateStateInputInternal) => Promise<State>) => Promise<void>,
 	updateState: (state: State) => Promise<State>
 ) {
-	let collectedState: Partial<State> = {};
+	let collectedState = {} as State;
 
 	let doesStateGotUpdated: boolean = false;
 
 	await collector(async (input) => {
-		collectedState = { ...collectedState, ...input.state };
+		if (Object.keys(input.state).length === 0) {
+			return collectedState;
+		}
+
+		collectedState = Object.assign(collectedState, input.state);
 		doesStateGotUpdated = true;
-		return collectedState as State;
+		return collectedState;
 	});
 
 	if (doesStateGotUpdated && updateState) {
-		state = await updateState(collectedState as State);
+		state = await updateState(collectedState);
 	}
 
-	return state as State;
+	return state;
 }
 
 interface UpdateStateInputInternal {

@@ -1,5 +1,5 @@
 /**
- * Close the listbox if needed.
+ * Handle the dialog's `close` event.
  */
 export async function handleClose(input: {
 	state: State;
@@ -7,70 +7,30 @@ export async function handleClose(input: {
 		updateState: Hooks['updateState'];
 	};
 }): Promise<void> {
-	let state = input.state;
-
-	state = await collectStateUpdates(
-		state,
-		async (updateState) => {
-			updateState({ state: { isOpen: false } });
-		},
-		async (state) =>
-			input.hooks.updateState({
-				state,
-				reason: 'close'
-			})
-	);
+	await close(input);
 }
 
 /**
  * Programmatically close the modal.
+ *
+ * **Note**: `dialogEl.close()` must be called externally. This allows to implement animations before closing the modal.
  */
 export async function close(input: {
 	state: State;
-	dialogEl: HTMLDialogElement;
 	hooks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	if (state.isOpen) {
-		input.dialogEl.close();
-		state = await collectStateUpdates(
-			state,
-			async (updateState) => {
-				await getUpdatedStateOnClose({
-					state: input.state,
-					hooks: {
-						updateState
-					}
-				});
+		state = await input.hooks.updateState({
+			state: {
+				isOpen: false
 			},
-			(state) => {
-				return input.hooks.updateState({
-					state,
-					reason: 'close'
-				});
-			}
-		);
+			reason: 'close'
+		});
 	}
-
-	return state;
-}
-
-async function getUpdatedStateOnClose(input: {
-	state: State;
-	hooks: {
-		updateState: (input: UpdateStateInputInternal) => Promise<State>;
-	};
-}): Promise<State> {
-	let state = {} as State;
-
-	if (input.state.isOpen) {
-		state.isOpen = false;
-	}
-
-	return state;
 }
 
 /**
@@ -79,14 +39,23 @@ async function getUpdatedStateOnClose(input: {
 export async function open(input: {
 	state: State;
 	dialogEl: HTMLDialogElement;
+	/**
+	 * When `true`, the modal is shown as a modal dialog.
+	 *
+	 * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog#Modal_dialogs
+	 */
+	modal: boolean;
 	hooks: {
 		updateState: Hooks['updateState'];
 	};
-}): Promise<State> {
+}): Promise<void> {
 	let state = input.state;
 
 	if (!state.isOpen) {
-		input.dialogEl.showModal();
+		if (!input.dialogEl.open) {
+			if (input.modal) input.dialogEl.showModal();
+			else input.dialogEl.show();
+		}
 		state = await input.hooks.updateState({
 			state: {
 				isOpen: true
@@ -94,8 +63,6 @@ export async function open(input: {
 			reason: 'open'
 		});
 	}
-
-	return state;
 }
 
 /**
@@ -133,21 +100,25 @@ async function collectStateUpdates(
 	collector: (updateState: (input: UpdateStateInputInternal) => Promise<State>) => Promise<void>,
 	updateState: (state: State) => Promise<State>
 ) {
-	let collectedState: Partial<State> = {};
+	let collectedState = {} as State;
 
 	let doesStateGotUpdated: boolean = false;
 
 	await collector(async (input) => {
+		if (Object.keys(input.state).length === 0) {
+			return collectedState;
+		}
+
 		collectedState = Object.assign(collectedState, input.state);
 		doesStateGotUpdated = true;
-		return collectedState as State;
+		return collectedState;
 	});
 
 	if (doesStateGotUpdated && updateState) {
-		state = await updateState(collectedState as State);
+		state = await updateState(collectedState);
 	}
 
-	return state as State;
+	return state;
 }
 
 interface UpdateStateInputInternal {
