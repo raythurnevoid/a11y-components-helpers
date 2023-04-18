@@ -3,6 +3,7 @@
 	import TextButton from '../text-button/TextButton.svelte';
 	import Code from './Code.svelte';
 	import { onMount } from 'svelte';
+	import FullSourceModal from './FullSourceModal.svelte';
 
 	export let source: Code['$$prop_def']['source'];
 	export let fileName: string;
@@ -11,9 +12,17 @@
 	let codeComp: Code;
 	let codeEl: HTMLElement;
 
+	let canShowSourceModalLoad: boolean = false;
+	let isShowSourceModalOpen: boolean = false;
+
 	onMount(() => {
 		codeEl = codeComp.getCodeElement();
 	});
+
+	function handleShowSourceButtonClick() {
+		canShowSourceModalLoad = true;
+		isShowSourceModalOpen = true;
+	}
 </script>
 
 <div class="CodeSnippet">
@@ -26,7 +35,10 @@
 		{#if showFullSourceButton}
 			<div class="CodeSnippet__full-source-code-button-layer">
 				<div class="CodeSnippet__full-source-code-button-layer__content">
-					<TextButton>Show Source</TextButton>
+					<TextButton on:click={handleShowSourceButtonClick}>Show Source</TextButton>
+					{#if canShowSourceModalLoad}
+						<FullSourceModal bind:open={isShowSourceModalOpen} {source} />
+					{/if}
 				</div>
 			</div>
 		{/if}

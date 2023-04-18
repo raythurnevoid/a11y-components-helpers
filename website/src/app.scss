@@ -18,6 +18,9 @@ body {
 	width: 100%;
 	background: var(--color--background);
 	color: var(--color--on-background);
+}
+
+body, dialog {
 	overflow: overlay;
 }
 

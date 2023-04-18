@@ -1,36 +1,37 @@
 <script lang="ts">
 	import Dialog from '$lib/components/examples/dialog/Dialog.svelte';
 
-	let state: Dialog['$$prop_def']['state'];
-
 	let open: boolean = false;
+	let modal: boolean = true;
+	let closeOnBackdropClick: boolean = true;
 
 	let closeValue: string = '';
 
-	function handleClose(event: Modal['$$events_def']['close']) {
+	function handleClose(event: Dialog['$$events_def']['close']) {
 		closeValue = event.detail.value;
 	}
 </script>
 
 <main>
-	<button>Nothing</button>
-	<button
-		on:click={() => {
-			open = true;
-		}}>Open Modal</button
-	>
-	<Dialog bind:state bind:open on:close={handleClose} modal />
+	<div>
+		<label>
+			<input type="checkbox" bind:checked={modal} />
+			Modal
+		</label>
+	</div>
+	<div>
+		<label>
+			<input type="checkbox" bind:checked={closeOnBackdropClick} />
+			Close on backdrop click
+		</label>
+	</div>
+	<div>
+		<button
+			on:click={() => {
+				open = true;
+			}}>Open Modal</button
+		>
+	</div>
 	<div>Close value: {closeValue}</div>
-	<aside id="state">
-		<pre><code>{JSON.stringify(state, null, 2)}</code></pre>
-	</aside>
 </main>
-
-<style>
-	#state {
-		position: fixed;
-		right: 16px;
-		padding: 16px;
-		border: 5px gray inset;
-	}
-</style>
+<Dialog bind:open on:close={handleClose} {modal} {closeOnBackdropClick} />

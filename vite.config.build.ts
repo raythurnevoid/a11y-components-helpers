@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
-const entry = ['./src/lib/lib/combobox/autocomplete.ts'];
+const entry = ['./src/lib/lib/autocomplete/autocomplete.ts', './src/lib/lib/dialog/dialog.ts'];
 
 export default defineConfig({
 	plugins: [

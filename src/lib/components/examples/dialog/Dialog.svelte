@@ -10,10 +10,7 @@
 	export let open: boolean = false;
 	export let alert: boolean = false;
 	export let modal: boolean = false;
-
-	export let state = dialogHelpers.setState({
-		isOpen: false
-	});
+	export let closeOnBackdropClick: boolean = false;
 
 	let dispatch = createEventDispatcher<{
 		close: {
@@ -30,18 +27,6 @@
 		alert
 	});
 
-	let hooks = dialogHelpers.setHooks({
-		updateState: async (input) => {
-			state = { ...state, ...input.state };
-
-			if (input.state.isOpen != null) {
-				open = input.state.isOpen;
-			}
-
-			return state;
-		}
-	});
-
 	let mounted: boolean = false;
 
 	onMount(() => {
@@ -52,18 +37,15 @@
 
 	function handleOpenPropChange(open: boolean) {
 		if (open) {
-			dialogHelpers.open({
-				state,
-				hooks,
-				dialogEl,
-				modal
-			});
+			if (modal) {
+				dialogEl.showModal();
+			} else {
+				dialogEl.show();
+			}
 		} else {
-			dialogHelpers.close({
-				state,
-				hooks
-			});
 			dialogEl.close();
+			// clean the dialog return value to prevent using it when closing with Esc
+			dialogEl.returnValue = '';
 		}
 	}
 
@@ -71,10 +53,7 @@
 		const event = e as CloseEvent;
 		const target = event.target as HTMLDialogElement;
 
-		await dialogHelpers.handleClose({
-			state,
-			hooks
-		});
+		open = false;
 
 		dispatch('close', {
 			value: target.returnValue
@@ -82,11 +61,13 @@
 	}
 
 	function handleDialogClick(e: Event) {
+		if (!closeOnBackdropClick) return;
+
 		const event = e as MouseEvent;
 		const target = event.target as HTMLElement;
 
 		if (target.tagName === 'DIALOG') {
-			dialogEl.close('close');
+			dialogEl.close('backdrop');
 		}
 	}
 </script>

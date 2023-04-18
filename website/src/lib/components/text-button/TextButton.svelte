@@ -1,4 +1,4 @@
-<button class="TextButton">
+<button class="TextButton" on:click>
 	<div class="TextButton__touch-target-container">
 		<div class="TextButton__touch-target" />
 	</div>

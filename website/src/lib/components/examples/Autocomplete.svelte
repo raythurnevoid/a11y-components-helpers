@@ -31,7 +31,7 @@
 </script>
 
 <script lang="ts">
-	import * as autocompleteHelpers from '@raythurnevoid/a11y-components-helpers/autocomplete';
+	import * as autocompleteHelpers from '@raythurnevoid/a11y-components-helpers/autocomplete/autocomplete.js';
 	import { onMount, createEventDispatcher } from 'svelte';
 	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
 

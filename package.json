@@ -16,7 +16,8 @@
 	},
 	"type": "module",
 	"exports": {
-		"autocomplete": "./autocomplete.js"
+		"./autocomplete/*": "./autocomplete/*",
+		"./dialog/*": "./dialog/*"
 	},
 	"workspaces": [
 		"./website"

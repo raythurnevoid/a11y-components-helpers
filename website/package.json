@@ -13,8 +13,8 @@
 	},
 	"type": "module",
 	"browserslist": [
-    "> 2%"
-  ],
+		"> 2%"
+	],
 	"devDependencies": {
 		"@fontsource/fira-mono": "^4.5.10",
 		"@fontsource/roboto": "^4.5.8",
@@ -23,7 +23,7 @@
 		"@material/tooltip": "^14.0.0",
 		"@material/top-app-bar": "^14.0.0",
 		"@material/typography": "^14.0.0",
-		"@raythurnevoid/a11y-components-helpers": "file:../dist/raythurnevoid-a11y-components-helpers-0.0.1.tgz",
+		"@raythurnevoid/a11y-components-helpers": "file:../dist",
 		"@sveltejs/adapter-static": "^2.0.2",
 		"@sveltejs/kit": "^1.15.5",
 		"@types/prismjs": "^1.26.0",
