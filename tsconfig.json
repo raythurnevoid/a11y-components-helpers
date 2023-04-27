@@ -5,5 +5,6 @@
 		// "verbatimModuleSyntax": true,
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
+		"noUncheckedIndexedAccess": true
 	},
 }

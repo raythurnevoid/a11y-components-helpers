@@ -10,11 +10,12 @@
 	let menuItems: string[] = ['Action 1', 'Action 2', 'Action 3'];
 
 	let el: HTMLElement | undefined = undefined;
-	let menuEl: HTMLMenuElement | undefined = undefined;
 	let menuId: string = `${id}__menu`;
 
 	let open: boolean = false;
 	let activeOptionIndex: number | null = null;
+
+	let wrapFocus: boolean = true;
 
 	const temporaryOnKeyDownFilterStore = new TemporaryOnKeyDownFilterStore();
 
@@ -84,11 +85,21 @@
 					break;
 
 				case 'ArrowDown':
-					activeOptionIndex = Math.min(activeOptionIndex + 1, menuItems.length - 1);
+					if (wrapFocus && activeOptionIndex === menuItems.length - 1) {
+						activeOptionIndex = 0;
+					} else {
+						activeOptionIndex = Math.min(activeOptionIndex + 1, menuItems.length - 1);
+					}
+
 					break;
 
 				case 'ArrowUp':
-					activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
+					if (wrapFocus && activeOptionIndex === 0) {
+						activeOptionIndex = menuItems.length - 1;
+					} else {
+						activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
+					}
+
 					break;
 
 				case 'Home':
@@ -128,7 +139,6 @@
 	}
 
 	function handleBackgroundPointerUp(event: PointerEvent) {
-		debugger;
 		const target = event.target as HTMLElement;
 
 		if (!open || el?.contains(target)) {
@@ -188,7 +198,6 @@
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 	<!-- svelte-ignore a11y-no-redundant-roles -->
 	<menu
-		bind:this={menuEl}
 		id={menuId}
 		class="MenuButton__menu"
 		class:Menu--open={open}

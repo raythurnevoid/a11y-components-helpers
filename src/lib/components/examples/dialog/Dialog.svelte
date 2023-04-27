@@ -4,7 +4,6 @@
 
 <script lang="ts">
 	import { createEventDispatcher, onMount } from 'svelte';
-	import * as dialogHelpers from '$lib/lib/dialog/dialog.js';
 
 	export let id: string = `Dialog-${index++}`;
 	export let open: boolean = false;
@@ -22,10 +21,6 @@
 
 	let labelId: string = `${id}__label`;
 	let descriptionId: string = `${id}__description`;
-
-	const a11yAttributes = dialogHelpers.getA11yAttributes({
-		alert
-	});
 
 	let mounted: boolean = false;
 
@@ -75,7 +70,7 @@
 <dialog
 	bind:this={dialogEl}
 	class="Dialog"
-	role={a11yAttributes.role}
+	role={alert ? 'alertdialog' : 'dialog'}
 	aria-labelledby={labelId}
 	aria-describedby={descriptionId}
 	on:click={handleDialogClick}
