@@ -404,8 +404,6 @@
 	// 	}
 	// }
 
-	// if (import.meta.vitest)
-
 	interface MenuItem {
 		value: string;
 		el: HTMLElement;

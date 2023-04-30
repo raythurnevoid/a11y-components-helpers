@@ -5,6 +5,9 @@
 		// "verbatimModuleSyntax": true,
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
-		"noUncheckedIndexedAccess": true
+		"noUncheckedIndexedAccess": true,
+		"types": [
+			"vitest/importMeta"
+		]
 	},
 }
