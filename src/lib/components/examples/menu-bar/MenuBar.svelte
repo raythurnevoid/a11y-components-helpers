@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 
+	let menuBarEl: HTMLElement;
+
 	const menuBar = [
 		{
 			value: 'File',
@@ -57,6 +59,8 @@
 	] as MenuItem[];
 
 	let mapped: MappedDOM | undefined = undefined;
+
+	let hoverEl: Element | undefined = undefined;
 
 	onMount(() => {
 		console.log(menuBar);
@@ -149,6 +153,10 @@
 				case 'Enter':
 				case ' ':
 				case 'Escape':
+				case 'Home':
+				case 'PageUp':
+				case 'End':
+				case 'PageDown':
 					isToHandle = true;
 					event.preventDefault();
 					break;
@@ -223,7 +231,17 @@
 						break;
 					case 'ArrowLeft':
 						elToActivate = activeEl.closest('menu menuitem:has(:scope)');
+						break;
 				}
+			}
+
+			switch (event.key) {
+				case 'Home':
+					elToActivate = activeEl.parentElement?.firstElementChild ?? null;
+					break;
+				case 'End':
+					elToActivate = activeEl.parentElement?.lastElementChild ?? null;
+					break;
 			}
 
 			if (!menuElToOpen) {
@@ -244,7 +262,7 @@
 						}
 
 						if (elToActivate && this.canMenuOpen) {
-							this.closeAllMenus(activeEl);
+							this.closeAllVirtualDomMenus(activeEl);
 							menuElToOpen = elToActivate.firstElementChild;
 						}
 
@@ -253,10 +271,10 @@
 			}
 
 			if (menuElToOpen) {
-				this.openMenu(menuElToOpen);
+				this.openVirtualDomMenu(menuElToOpen);
 				this.canMenuOpen = true;
 			} else if (event.key === 'Escape') {
-				this.closeAllMenus();
+				this.closeAllVirtualDomMenus();
 				this.canMenuOpen = false;
 			}
 
@@ -264,7 +282,7 @@
 				if (event.key === 'ArrowLeft') {
 					const activeElMenu = activeEl.parentElement;
 					if (activeElMenu) {
-						this.closeMenu(activeElMenu);
+						this.closeVirtualDomMenu(activeElMenu);
 					}
 				}
 
@@ -276,32 +294,75 @@
 			return true;
 		}
 
-		private openMenu(el: Element) {
-			const allSameMenuAtCurrentLevel =
-				el.parentElement?.parentElement?.querySelectorAll('menuitem > menu');
-			if (allSameMenuAtCurrentLevel) {
-				for (let menu of allSameMenuAtCurrentLevel) {
-					this.closeMenu(menu);
-				}
-			}
+		private openVirtualDomMenu(el: Element) {
+			this.closeVirtualDomMenuAtItemLevel(el.parentElement!);
 			el.classList.add('open');
 		}
 
-		private closeMenu(el: Element) {
+		private closeVirtualDomMenuAtItemLevel(el: Element) {
+			const allSameMenuAtCurrentLevel = el.parentElement?.querySelectorAll('menuitem > menu');
+			if (allSameMenuAtCurrentLevel) {
+				for (let menu of allSameMenuAtCurrentLevel) {
+					this.closeVirtualDomMenu(menu);
+				}
+			}
+		}
+
+		private closeVirtualDomMenu(el: Element) {
+			let activeEl = el.getElementsByClassName('focusable')[0];
+			if (activeEl) {
+				activeEl.classList.remove('focusable');
+				let elToActivate =
+					activeEl.closest('menuitem:has(:scope)') ?? activeEl.closest('menubar > menuitem');
+				if (elToActivate) {
+					elToActivate.classList.add('focusable');
+				}
+			}
+
 			el.classList.remove('open');
 		}
 
-		private closeAllMenus(menu?: Element) {
+		private closeAllVirtualDomMenus(menu?: Element) {
 			const menus = (menu ?? this.virtualDomMenuBar).querySelectorAll('menu');
 			if (menus) {
 				for (let menu of menus) {
-					this.closeMenu(menu);
+					this.closeVirtualDomMenu(menu);
 				}
 			}
 		}
 
 		isMenuOpen(menu: MenuItem[]) {
 			return this.domRefMap.get(menu)?.classList.contains('open');
+		}
+
+		openMenuFromItem(item: MenuItem) {
+			const itemEl = this.domRefMap.get(item);
+			if (!itemEl) {
+				return;
+			}
+
+			this.closeVirtualDomMenuAtItemLevel(itemEl);
+			if (itemEl.firstElementChild) {
+				this.openVirtualDomMenu(itemEl.firstElementChild);
+			}
+		}
+
+		openMenu(menu: MenuItem[]) {
+			const el = this.domRefMap.get(menu);
+			if (el) {
+				this.openVirtualDomMenu(el);
+			}
+		}
+
+		closeAllMenus() {
+			this.closeAllVirtualDomMenus();
+		}
+
+		setActive(elToActivate: MenuItem) {
+			let activeEl = this.virtualDomFocusableMenuItem;
+			activeEl?.classList.remove('focusable');
+			activeEl = this.domRefMap.get(elToActivate) ?? null;
+			activeEl?.classList.add('focusable');
 		}
 	}
 
@@ -311,9 +372,35 @@
 			mapped = mapped;
 		}
 
-		console.log(mapped?.virtualDomMenuBar);
 		await tick();
 		mapped?.focusableMenuItem.el.focus();
+	}
+
+	async function handlePointerOver(event: PointerEvent, item: MenuItem) {
+		mapped?.setActive(item);
+		if (menuBarEl.contains(document.activeElement)) {
+			mapped?.openMenuFromItem(item);
+			mapped = mapped;
+			await tick();
+			mapped?.focusableMenuItem.el.focus();
+		}
+	}
+
+	function handleFocusOut(event: FocusEvent) {
+		if (!document.hasFocus() || menuBarEl?.contains(event.relatedTarget as Element)) {
+			return;
+		}
+
+		mapped?.closeAllMenus();
+		mapped = mapped;
+	}
+
+	function handleClick(event: MouseEvent, item: MenuItem) {
+		mapped?.setActive(item);
+		if (menuBarEl.contains(document.activeElement)) {
+			mapped?.openMenuFromItem(item);
+			mapped = mapped;
+		}
 	}
 
 	interface MenuItem {
@@ -324,16 +411,25 @@
 </script>
 
 <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
-<menu class="MenuBar" role="menubar" on:keydown={handleKeyDown}>
+<menu
+	bind:this={menuBarEl}
+	class="MenuBar"
+	role="menubar"
+	on:keydown={handleKeyDown}
+	on:focusout={handleFocusOut}
+>
 	{#each menuBar as menuitem}
 		{@const activeItem = mapped ? mapped.focusableMenuItem : menuBar[0]}
 		<li class="MenuBar__li" role="none">
 			<button
 				bind:this={menuitem.el}
 				class="MenuBar__menuitem"
+				class:MenuBar__menuitem--active={menuitem === activeItem}
 				role="menuitem"
 				type="button"
 				tabindex={menuitem === activeItem ? 0 : -1}
+				on:pointerover={(e) => handlePointerOver(e, menuitem)}
+				on:click={(e) => handleClick(e, menuitem)}
 			>
 				{menuitem.value}
 			</button>
@@ -352,6 +448,8 @@
 								role="menuitem"
 								type="button"
 								tabindex={submenuitem === activeItem ? 0 : -1}
+								on:pointerover={(e) => handlePointerOver(e, submenuitem)}
+								on:click={(e) => handleClick(e, submenuitem)}
 							>
 								{submenuitem.value}
 
@@ -375,6 +473,8 @@
 												role="menuitem"
 												type="button"
 												tabindex={subsubmenuitem === activeItem ? 0 : -1}
+												on:pointerover={(e) => handlePointerOver(e, subsubmenuitem)}
+												on:click={(e) => handleClick(e, subsubmenuitem)}
 											>
 												{subsubmenuitem.value}
 												{#if subsubmenuitem.submenu}
@@ -397,6 +497,8 @@
 																role="menuitem"
 																type="button"
 																tabindex={menuitem === activeItem ? 0 : -1}
+																on:pointerover={(e) => handlePointerOver(e, subsubsubmenuitem)}
+																on:click={(e) => handleClick(e, subsubsubmenuitem)}
 															>
 																{subsubsubmenuitem.value}
 															</button>
@@ -442,6 +544,10 @@
 		background: none;
 		border: none;
 		padding: 8px 16px;
+	}
+
+	.MenuBar__menuitem:hover:not(:focus-visible) {
+		outline: 1px solid black;
 	}
 
 	.MenuBar__submenu {
