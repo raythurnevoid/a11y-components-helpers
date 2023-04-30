@@ -60,7 +60,8 @@
 
 	let mapped: MappedDOM | undefined = undefined;
 
-	let hoverEl: Element | undefined = undefined;
+	let canOpenMultipleItems = false;
+	let openItems: MenuItem[] = [];
 
 	onMount(() => {
 		console.log(menuBar);
@@ -347,13 +348,6 @@
 			}
 		}
 
-		openMenu(menu: MenuItem[]) {
-			const el = this.domRefMap.get(menu);
-			if (el) {
-				this.openVirtualDomMenu(el);
-			}
-		}
-
 		closeAllMenus() {
 			this.closeAllVirtualDomMenus();
 		}
@@ -402,6 +396,15 @@
 			mapped = mapped;
 		}
 	}
+
+	// function openItem(item: MenuItem) {
+	// 	this.closeVirtualDomMenuAtItemLevel(itemEl);
+	// 	if (itemEl.firstElementChild) {
+	// 		this.openVirtualDomMenu(itemEl.firstElementChild);
+	// 	}
+	// }
+
+	// if (import.meta.vitest)
 
 	interface MenuItem {
 		value: string;
