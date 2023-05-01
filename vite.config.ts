@@ -7,7 +7,20 @@ export default defineConfig({
 	define: {
 		'import.meta.vitest': 'undefined'
 	},
+	optimizeDeps: {
+		exclude: ['vitest/utils'],
+		include: ['@vitest/utils', 'vitest/browser']
+	},
 	test: {
-		include: ['src/**/*.{js,ts}']
+		includeSource: ['src/**/*.{js,ts}'],
+		browser: {
+			enabled: true,
+			name: 'chromium',
+			provider: 'playwright',
+			headless: false
+		},
+		benchmark: {
+			includeSource: ['src/**/*.{js,ts}']
+		}
 	}
 });
