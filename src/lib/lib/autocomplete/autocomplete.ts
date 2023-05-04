@@ -42,13 +42,17 @@ export async function handleComboboxInput(input: {
 				reason
 			});
 
-			if (listboxCanOpen) {
-				if (!state.isListboxOpen) {
-					await updateStateOnOpen({
-						state,
-						hooks: { updateState }
-					});
-				}
+			if (listboxCanOpen && !state.isListboxOpen) {
+				await updateStateOnOpen({
+					state,
+					hooks: { updateState }
+				});
+			} else if (!listboxCanOpen && state.isListboxOpen) {
+				await updateStateOnClose({
+					force: true,
+					state,
+					hooks: { updateState }
+				});
 			}
 		},
 		async (statePatch) => {
