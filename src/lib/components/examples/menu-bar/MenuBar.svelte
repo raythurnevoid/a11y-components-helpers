@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { open } from '../../../lib/autocomplete/autocomplete.js';
 
 	let menuBarEl: HTMLElement;
 
@@ -61,7 +62,9 @@
 	let mapped: MappedDOM | undefined = undefined;
 
 	let canOpenMultipleItems = false;
-	let openItems: MenuItem[] = [];
+	let openItems = new Set<MenuItem>();
+	let itemPathMap = new Map<MenuItem, number[]>();
+	let activeItem: MenuItem | undefined = menuBar.at(0);
 
 	onMount(() => {
 		console.log(menuBar);
@@ -72,20 +75,21 @@
 
 			const dom = document.implementation.createDocument('', 'menubar', null);
 
-			function convert(el: Element, menu: MenuItem[]) {
-				menu.forEach((menuItem) => {
+			function convert(el: Element, menu: MenuItem[], path: number[] = []) {
+				menu.forEach((menuItem, index) => {
 					const virtualDomMenuItem = dom.createElement('menuitem' as string);
 					virtualDomMenuItem.setAttribute('value', menuItem.value);
 					el.appendChild(virtualDomMenuItem);
 					objRefMap.set(virtualDomMenuItem, menuItem);
 					domRefMap.set(menuItem, virtualDomMenuItem);
+					itemPathMap.set(menuItem, [...path, index]);
 
 					if (menuItem.submenu) {
 						const virtualDomMenu = dom.createElement('menu');
 						virtualDomMenuItem.appendChild(virtualDomMenu);
 						objRefMap.set(virtualDomMenu, menuItem.submenu);
 						domRefMap.set(menuItem.submenu, virtualDomMenu);
-						convert(virtualDomMenu, menuItem.submenu);
+						convert(virtualDomMenu, menuItem.submenu, [...path, index]);
 					}
 				});
 			}
@@ -99,12 +103,6 @@
 		}
 
 		mapped = createMappedDOM(menuBar);
-
-		console.log(mapped.virtualDomMenuBar);
-		console.log(mapped.getObj(mapped.virtualDomMenuBar.children[1]!.firstElementChild!));
-		console.log(mapped.getDom(menuBar[2]!));
-
-		mapped.focusableMenuItem;
 	});
 
 	class MappedDOM {
@@ -115,26 +113,6 @@
 			private objRefMap: WeakMap<Element, any>,
 			private domRefMap: WeakMap<any, Element>
 		) {}
-
-		get virtualDomMenuBar() {
-			return this.virtualDom.firstElementChild!;
-		}
-
-		get virtualDomFocusableMenuItem() {
-			let focusable = this.virtualDomMenuBar.getElementsByClassName('focusable')[0] ?? null;
-
-			if (!focusable) {
-				focusable = this.virtualDomMenuBar.firstElementChild;
-				focusable?.classList.add('focusable');
-			}
-
-			return focusable;
-		}
-
-		get focusableMenuItem() {
-			const focusable = this.virtualDomFocusableMenuItem;
-			return focusable ? this.getObj(focusable) : undefined;
-		}
 
 		getDom(obj: any) {
 			return this.domRefMap.get(obj);
@@ -165,198 +143,172 @@
 					return false;
 			}
 
-			let activeEl = this.virtualDomFocusableMenuItem;
-
-			if (!activeEl) {
+			if (!activeItem) {
 				return false;
 			}
 
-			const isActiveElInMenuBar = activeEl.parentElement === this.virtualDomMenuBar;
-			let elToActivate: Element | null = null;
-			let menuElToOpen: Element | null = null;
+			const activeItemPath = itemPathMap.get(activeItem)!;
+			const isActiveElInMenuBar = activeItemPath.length === 1;
+			let itemToActivate: MenuItem | null = null;
+			let itemToOpen: MenuItem | null = null;
 
 			if (event.key === 'Escape') {
-				elToActivate = activeEl.closest('menubar > menuitem');
+				itemToActivate = menuBar.at(activeItemPath.at(0)!)!;
 			} else if (isActiveElInMenuBar) {
 				switch (event.key) {
 					case 'ArrowUp':
 					case 'ArrowDown':
 					case 'Enter':
 					case ' ':
-						menuElToOpen = activeEl.firstElementChild;
+						if (activeItem.submenu) {
+							itemToOpen = activeItem;
+						}
 						break;
 				}
 
 				switch (event.key) {
 					case 'ArrowRight':
-						elToActivate = activeEl.nextElementSibling;
+						itemToActivate = menuBar.at(activeItemPath.at(0)! + 1)!;
 						break;
 					case 'ArrowLeft':
-						elToActivate = activeEl.previousElementSibling;
+						itemToActivate = menuBar.at(activeItemPath.at(0)! - 1)!;
 						break;
 					case 'ArrowDown':
 					case 'Enter':
 					case ' ':
-						if (menuElToOpen) {
-							elToActivate = menuElToOpen.firstElementChild;
+						if (itemToOpen && itemToOpen.submenu!.at(0)) {
+							itemToActivate = itemToOpen.submenu!.at(0)!;
 						}
 						break;
 					case 'ArrowUp':
-						if (menuElToOpen) {
-							elToActivate = activeEl.previousElementSibling;
+						if (itemToOpen && itemToOpen.submenu!.at(-1)) {
+							itemToActivate = itemToOpen.submenu!.at(-1)!;
 						}
 						break;
+				}
+
+				switch (event.key) {
+					case 'ArrowRight':
+					case 'ArrowLeft':
+						if (openItems.size > 0) {
+							openItems.clear();
+							openItems = openItems;
+						}
+						if (itemToActivate && this.canMenuOpen) {
+							if (itemToActivate.submenu) {
+								itemToOpen = itemToActivate;
+							}
+						}
 				}
 			} else {
 				switch (event.key) {
-					case 'ArrowRight':
-					case 'Enter':
-					case ' ':
-						menuElToOpen = activeEl.firstElementChild;
-						break;
-				}
-
-				switch (event.key) {
 					case 'ArrowDown':
-						elToActivate = activeEl.nextElementSibling;
+						itemToActivate =
+							this.getItemFromPath([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! + 1]) ??
+							null;
 						break;
 					case 'ArrowUp':
-						elToActivate = activeEl.previousElementSibling;
+						itemToActivate =
+							this.getItemFromPath([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! - 1]) ??
+							null;
 						break;
-					case 'ArrowRight':
+
 					case 'Enter':
 					case ' ':
-						if (menuElToOpen) {
-							elToActivate = menuElToOpen.firstElementChild;
+						if (activeItem && activeItem.submenu) {
+							itemToOpen = activeItem;
+
+							if (itemToOpen.submenu!.at(0)) {
+								itemToActivate = itemToOpen.submenu!.at(0)!;
+							}
+						}
+						break;
+					case 'ArrowRight':
+						if (activeItem.submenu) {
+							itemToOpen = activeItem;
+
+							if (itemToOpen.submenu!.at(0)) {
+								itemToActivate = itemToOpen.submenu!.at(0)!;
+							}
+						} else {
+							itemToActivate = itemToOpen = menuBar.at(activeItemPath.at(0)! + 1) ?? null;
 						}
 						break;
 					case 'ArrowLeft':
-						elToActivate = activeEl.closest('menu menuitem:has(:scope)');
+						if (activeItemPath.length > 2) {
+							itemToActivate = this.getItemFromPath(activeItemPath.slice(0, -1)) ?? null;
+							itemToOpen = this.getItemFromPath(activeItemPath.slice(0, -2)) ?? null;
+						} else {
+							itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
+							if (itemToActivate && this.canMenuOpen && itemToActivate.submenu) {
+								itemToOpen = itemToActivate;
+							}
+						}
 						break;
 				}
 			}
 
 			switch (event.key) {
 				case 'Home':
-					elToActivate = activeEl.parentElement?.firstElementChild ?? null;
+					itemToActivate = this.getItemFromPath([...activeItemPath.slice(0, -1), 0]) ?? null;
 					break;
 				case 'End':
-					elToActivate = activeEl.parentElement?.lastElementChild ?? null;
+					itemToActivate = this.getItemFromPath([...activeItemPath.slice(0, -1), -1]) ?? null;
 					break;
 			}
 
-			if (!menuElToOpen) {
-				switch (event.key) {
-					case 'ArrowRight':
-					case 'ArrowLeft':
-						const highestMenuItemElFromActiveEl = activeEl.closest('menubar > menuitem')!;
-
-						if (!isActiveElInMenuBar && !elToActivate) {
-							switch (event.key) {
-								case 'ArrowRight':
-									elToActivate = highestMenuItemElFromActiveEl.nextElementSibling;
-									break;
-								case 'ArrowLeft':
-									elToActivate = highestMenuItemElFromActiveEl.previousElementSibling;
-									break;
-							}
-						}
-
-						if (elToActivate && this.canMenuOpen) {
-							this.closeAllVirtualDomMenus(activeEl);
-							menuElToOpen = elToActivate.firstElementChild;
-						}
-
-						break;
-				}
-			}
-
-			if (menuElToOpen) {
-				this.openVirtualDomMenu(menuElToOpen);
-				this.canMenuOpen = true;
+			if (itemToOpen) {
+				this.openMenuFromItem(itemToOpen);
 			} else if (event.key === 'Escape') {
-				this.closeAllVirtualDomMenus();
+				openItems.clear();
+				openItems = openItems;
 				this.canMenuOpen = false;
-			}
-
-			if (elToActivate) {
-				if (event.key === 'ArrowLeft') {
-					const activeElMenu = activeEl.parentElement;
-					if (activeElMenu) {
-						this.closeVirtualDomMenu(activeElMenu);
-					}
-				}
-
-				activeEl.classList.remove('focusable');
-				activeEl = elToActivate;
-				activeEl.classList.add('focusable');
 			}
 
 			return true;
 		}
 
-		private openVirtualDomMenu(el: Element) {
-			this.closeVirtualDomMenuAtItemLevel(el.parentElement!);
-			el.classList.add('open');
-		}
-
-		private closeVirtualDomMenuAtItemLevel(el: Element) {
-			const allSameMenuAtCurrentLevel = el.parentElement?.querySelectorAll('menuitem > menu');
-			if (allSameMenuAtCurrentLevel) {
-				for (let menu of allSameMenuAtCurrentLevel) {
-					this.closeVirtualDomMenu(menu);
+		private getItemFromPath(path: number[]) {
+			let pointer: MenuItem | undefined = undefined;
+			for (const index of path) {
+				if (!pointer) {
+					pointer = menuBar.at(index);
+				} else {
+					pointer = pointer.submenu?.at(index);
 				}
-			}
-		}
 
-		private closeVirtualDomMenu(el: Element) {
-			let activeEl = el.getElementsByClassName('focusable')[0];
-			if (activeEl) {
-				activeEl.classList.remove('focusable');
-				let elToActivate =
-					activeEl.closest('menuitem:has(:scope)') ?? activeEl.closest('menubar > menuitem');
-				if (elToActivate) {
-					elToActivate.classList.add('focusable');
+				if (!pointer) {
+					break;
 				}
 			}
 
-			el.classList.remove('open');
+			return pointer;
 		}
 
-		private closeAllVirtualDomMenus(menu?: Element) {
-			const menus = (menu ?? this.virtualDomMenuBar).querySelectorAll('menu');
-			if (menus) {
-				for (let menu of menus) {
-					this.closeVirtualDomMenu(menu);
+		openMenuFromItem(itemToOpen: MenuItem) {
+			openItems.clear();
+			const itemToOpenPath = itemPathMap.get(itemToOpen)!;
+			let pointer: MenuItem | undefined = undefined;
+			for (const index of itemToOpenPath) {
+				if (!pointer) {
+					pointer = menuBar.at(index);
+				} else {
+					pointer = pointer.submenu?.at(index);
 				}
-			}
-		}
 
-		isMenuOpen(menu: MenuItem[]) {
-			return this.domRefMap.get(menu)?.classList.contains('open');
-		}
+				if (!pointer) {
+					break;
+				}
 
-		openMenuFromItem(item: MenuItem) {
-			const itemEl = this.domRefMap.get(item);
-			if (!itemEl) {
-				return;
+				openItems.add(pointer);
 			}
-
-			this.closeVirtualDomMenuAtItemLevel(itemEl);
-			if (itemEl.firstElementChild) {
-				this.openVirtualDomMenu(itemEl.firstElementChild);
-			}
+			openItems = openItems;
+			this.canMenuOpen = true;
 		}
 
 		closeAllMenus() {
-			this.closeAllVirtualDomMenus();
-		}
-
-		setActive(elToActivate: MenuItem) {
-			let activeEl = this.virtualDomFocusableMenuItem;
-			activeEl?.classList.remove('focusable');
-			activeEl = this.domRefMap.get(elToActivate) ?? null;
-			activeEl?.classList.add('focusable');
+			openItems.clear();
+			openItems = openItems;
 		}
 	}
 
@@ -367,16 +319,16 @@
 		}
 
 		await tick();
-		mapped?.focusableMenuItem.el.focus();
+		activeItem?.el.focus();
 	}
 
 	async function handlePointerOver(event: PointerEvent, item: MenuItem) {
-		mapped?.setActive(item);
+		activeItem = item;
 		if (menuBarEl.contains(document.activeElement)) {
 			mapped?.openMenuFromItem(item);
 			mapped = mapped;
 			await tick();
-			mapped?.focusableMenuItem.el.focus();
+			activeItem?.el.focus();
 		}
 	}
 
@@ -390,7 +342,7 @@
 	}
 
 	function handleClick(event: MouseEvent, item: MenuItem) {
-		mapped?.setActive(item);
+		activeItem = item;
 		if (menuBarEl.contains(document.activeElement)) {
 			mapped?.openMenuFromItem(item);
 			mapped = mapped;
@@ -411,6 +363,8 @@
 	}
 </script>
 
+{JSON.stringify(openItems)}
+
 <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 <menu
 	bind:this={menuBarEl}
@@ -420,7 +374,6 @@
 	on:focusout={handleFocusOut}
 >
 	{#each menuBar as menuitem}
-		{@const activeItem = mapped ? mapped.focusableMenuItem : menuBar[0]}
 		<li class="MenuBar__li" role="none">
 			<button
 				bind:this={menuitem.el}
@@ -438,7 +391,7 @@
 				<!-- svelte-ignore a11y-no-redundant-roles -->
 				<menu
 					class="MenuBar__submenu"
-					class:MenuBar__submenu--open={mapped.isMenuOpen(menuitem.submenu)}
+					class:MenuBar__submenu--open={openItems.has(menuitem)}
 					role="menu"
 				>
 					{#each menuitem.submenu as submenuitem}
@@ -463,7 +416,7 @@
 								<!-- svelte-ignore a11y-no-redundant-roles -->
 								<menu
 									class="MenuBar__submenu"
-									class:MenuBar__submenu--open={mapped.isMenuOpen(submenuitem.submenu)}
+									class:MenuBar__submenu--open={openItems.has(submenuitem)}
 									role="menu"
 								>
 									{#each submenuitem.submenu as subsubmenuitem}
@@ -487,7 +440,7 @@
 
 												<menu
 													class="MenuBar__submenu"
-													class:MenuBar__submenu--open={mapped.isMenuOpen(subsubmenuitem.submenu)}
+													class:MenuBar__submenu--open={openItems.has(subsubmenuitem)}
 													role="menu"
 												>
 													{#each subsubmenuitem.submenu as subsubsubmenuitem}
