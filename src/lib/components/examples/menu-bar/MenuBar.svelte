@@ -1,5 +1,14 @@
+<script lang="ts" context="module">
+	export interface MenuItem {
+		value: string;
+		el: HTMLElement;
+		submenu?: MenuItem[];
+	}
+</script>
+
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
 
 	let menuBarEl: HTMLElement;
 
@@ -58,54 +67,44 @@
 		}
 	] as MenuItem[];
 
-	let canOpenMultipleItems = false;
 	let openItems = new Set<MenuItem>();
 	let itemPathMap = new Map<MenuItem, number[]>();
+	let itemAncestryMap = new Map<MenuItem, MenuItem[]>();
 	let activeItem: MenuItem | undefined = menuBar.at(0);
-	let canMenuOpen = false;
+	let canMenuAutoOpen = false;
+	const printableCharRegex = /^[a-zA-Z0-9]$/;
+	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
 
-	(function mapItemsId(items: MenuItem[], path: number[] = []) {
+	(function mapItemsId(items: MenuItem[], path: number[] = [], ancestors: MenuItem[] = []) {
 		items.forEach((item, i) => {
-			itemPathMap.set(item, [...path, i]);
+			const itemPath = [...path, i];
+			itemPathMap.set(item, itemPath);
+			itemAncestryMap.set(item, ancestors);
 
 			if (item.submenu) {
-				mapItemsId(item.submenu, [...path, i]);
+				mapItemsId(item.submenu, itemPath, [...ancestors, item]);
 			}
 		});
 	})(menuBar);
 
-	function digThroughItems(path: number[], cb?: (item: MenuItem, index: number) => void) {
-		let pointer: MenuItem | undefined = path.length ? menuBar.at(path.at(0)!) : undefined;
-		if (pointer) {
-			for (let i = 0; i < path.length; i++) {
-				if (i > 0) {
-					const index = path.at(i)!;
-					pointer = pointer.submenu?.at(index);
-				}
-				if (!pointer) break;
-				cb?.(pointer, i);
-			}
-		}
-
-		return pointer;
-	}
-
 	function openItem(itemToOpen: MenuItem) {
 		openItems.clear();
-		const itemToOpenPath = itemPathMap.get(itemToOpen)!;
-
-		digThroughItems(itemToOpenPath, (pointer) => {
+		const ancestorsToOpen = itemAncestryMap.get(itemToOpen)!;
+		ancestorsToOpen.forEach((pointer) => {
 			openItems.add(pointer);
 		});
+		openItems.add(itemToOpen);
 
 		openItems = openItems;
-		canMenuOpen = true;
+		canMenuAutoOpen = true;
 	}
 
 	async function handleKeyDown(event: KeyboardEvent) {
 		if (!activeItem) {
 			return;
 		}
+
+		const activeItemAncenstry = itemAncestryMap.get(activeItem)!;
 
 		switch (event.key) {
 			case 'ArrowRight':
@@ -122,27 +121,28 @@
 				event.preventDefault();
 
 				const activeItemPath = itemPathMap.get(activeItem)!;
-				const isActiveElInMenuBar = activeItemPath.length === 1;
+
+				const isActiveItemInMenuBar = activeItemPath.length === 1;
 				let itemToActivate: MenuItem | null = null;
 				let itemToOpen: MenuItem | null = null;
 
 				switch (event.key) {
 					case 'Escape':
-						itemToActivate = menuBar.at(activeItemPath.at(0)!)!;
+						itemToActivate = activeItemAncenstry.at(0)!;
 						if (openItems.size > 0) {
 							openItems.clear();
 							openItems = openItems;
 						}
-						canMenuOpen = false;
+						canMenuAutoOpen = false;
 						break;
 					case 'Home':
-						itemToActivate = digThroughItems([...activeItemPath.slice(0, -1), 0]) ?? null;
+						itemToActivate = activeItemAncenstry.at(-1)!.submenu?.at(0) ?? null;
 						break;
 					case 'End':
-						itemToActivate = digThroughItems([...activeItemPath.slice(0, -1), -1]) ?? null;
+						itemToActivate = activeItemAncenstry.at(-1)!.submenu?.at(-1) ?? null;
 						break;
 					default:
-						if (isActiveElInMenuBar) {
+						if (isActiveItemInMenuBar) {
 							switch (event.key) {
 								case 'ArrowRight':
 								case 'ArrowLeft':
@@ -153,12 +153,7 @@
 										itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
 									}
 
-									if (openItems.size > 0) {
-										openItems.clear();
-										openItems = openItems;
-									}
-
-									if (canMenuOpen && itemToActivate?.submenu) {
+									if (canMenuAutoOpen) {
 										itemToOpen = itemToActivate;
 									}
 
@@ -187,14 +182,14 @@
 							switch (event.key) {
 								case 'ArrowDown':
 									itemToActivate =
-										digThroughItems([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! + 1]) ??
-										digThroughItems([...activeItemPath.slice(0, -1), 0]) ??
+										activeItemAncenstry.at(-1)!.submenu?.at(activeItemPath.at(-1)! + 1) ??
+										activeItemAncenstry.at(-1)!.submenu?.at(0) ??
 										null;
+									null;
 									break;
 								case 'ArrowUp':
 									itemToActivate =
-										digThroughItems([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! - 1]) ??
-										null;
+										activeItemAncenstry.at(-1)!.submenu?.at(activeItemPath.at(-1)! - 1) ?? null;
 									break;
 
 								case 'Enter':
@@ -215,17 +210,19 @@
 											itemToActivate = itemToOpen.submenu!.at(0)!;
 										}
 									} else {
-										itemToActivate = itemToOpen =
-											menuBar.at(activeItemPath.at(0)! + 1) ?? menuBar.at(0) ?? null;
+										itemToActivate = menuBar.at(activeItemPath.at(0)! + 1) ?? menuBar.at(0) ?? null;
+										if (itemToActivate) {
+											itemToOpen = itemToActivate;
+										}
 									}
 									break;
 								case 'ArrowLeft':
-									if (activeItemPath.length > 2) {
-										itemToActivate = digThroughItems(activeItemPath.slice(0, -1)) ?? null;
-										itemToOpen = digThroughItems(activeItemPath.slice(0, -2)) ?? null;
+									if (activeItemAncenstry.length > 1) {
+										itemToActivate = activeItemAncenstry.at(-1) ?? null;
+										itemToOpen = activeItemAncenstry.at(-2) ?? null;
 									} else {
 										itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
-										if (itemToActivate && canMenuOpen && itemToActivate.submenu) {
+										if (itemToActivate) {
 											itemToOpen = itemToActivate;
 										}
 									}
@@ -243,6 +240,16 @@
 					openItem(itemToOpen);
 				}
 
+				break;
+			default:
+				if (event.key.match(printableCharRegex)) {
+					temporaryFilter.handleOnKeyDown(event);
+					const currentMenu = activeItemAncenstry.at(-1)?.submenu ?? menuBar;
+					activeItem =
+						currentMenu.find((item) =>
+							item.value.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase())
+						) ?? activeItem;
+				}
 				break;
 		}
 
@@ -266,6 +273,8 @@
 
 		openItems.clear();
 		openItems = openItems;
+		activeItem = itemAncestryMap.get(activeItem!)!.at(0)! ?? activeItem;
+		canMenuAutoOpen = false;
 	}
 
 	function handleClick(event: MouseEvent, item: MenuItem) {
@@ -273,12 +282,6 @@
 		if (menuBarEl.contains(document.activeElement)) {
 			openItem(item);
 		}
-	}
-
-	interface MenuItem {
-		value: string;
-		el: HTMLElement;
-		submenu?: MenuItem[];
 	}
 </script>
 
@@ -299,6 +302,8 @@
 				role="menuitem"
 				type="button"
 				tabindex={menuitem === activeItem ? 0 : -1}
+				aria-haspopup={menuitem.submenu ? 'menu' : undefined}
+				aria-expanded={menuitem.submenu ? (openItems.has(menuitem) ? 'true' : 'false') : undefined}
 				on:pointerover={(e) => handlePointerOver(e, menuitem)}
 				on:click={(e) => handleClick(e, menuitem)}
 			>
@@ -319,6 +324,12 @@
 								role="menuitem"
 								type="button"
 								tabindex={submenuitem === activeItem ? 0 : -1}
+								aria-haspopup={submenuitem.submenu ? 'menu' : undefined}
+								aria-expanded={submenuitem.submenu
+									? openItems.has(submenuitem)
+										? 'true'
+										: 'false'
+									: undefined}
 								on:pointerover={(e) => handlePointerOver(e, submenuitem)}
 								on:click={(e) => handleClick(e, submenuitem)}
 							>
@@ -344,6 +355,12 @@
 												role="menuitem"
 												type="button"
 												tabindex={subsubmenuitem === activeItem ? 0 : -1}
+												aria-haspopup={subsubmenuitem.submenu ? 'menu' : undefined}
+												aria-expanded={subsubmenuitem.submenu
+													? openItems.has(subsubmenuitem)
+														? 'true'
+														: 'false'
+													: undefined}
 												on:pointerover={(e) => handlePointerOver(e, subsubmenuitem)}
 												on:click={(e) => handleClick(e, subsubmenuitem)}
 											>
@@ -368,6 +385,12 @@
 																role="menuitem"
 																type="button"
 																tabindex={menuitem === activeItem ? 0 : -1}
+																aria-haspopup={subsubsubmenuitem.submenu ? 'menu' : undefined}
+																aria-expanded={subsubsubmenuitem.submenu
+																	? openItems.has(subsubsubmenuitem)
+																		? 'true'
+																		: 'false'
+																	: undefined}
 																on:pointerover={(e) => handlePointerOver(e, subsubsubmenuitem)}
 																on:click={(e) => handleClick(e, subsubsubmenuitem)}
 															>
