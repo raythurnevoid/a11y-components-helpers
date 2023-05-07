@@ -3,26 +3,25 @@
 	import type { MenuItem } from './MenuBar.svelte';
 
 	export let menuItem: MenuItem;
-	export let activeItem: MenuItem;
+	export let activeItem: MenuItem | undefined;
 	export let openItems: Set<MenuItem>;
 
 	const dispatch = createEventDispatcher<{
-		click: { menuItem: MenuItem };
-		pointerover: { menuItem: MenuItem };
+		click: { menuItem: MenuItem; originalEvent: MouseEvent };
+		pointerover: { menuItem: MenuItem; originalEvent: PointerEvent };
 	}>();
 
 	function handlePointerOver(e: PointerEvent, menuItem: MenuItem) {
-		dispatch('pointerover', { menuItem });
+		dispatch('pointerover', { menuItem, originalEvent: e });
 	}
 
 	function handleClick(e: MouseEvent, menuItem: MenuItem) {
-		dispatch('click', { menuItem });
+		dispatch('click', { menuItem, originalEvent: e });
 	}
 </script>
 
 <li class="MenuBar__li" role="none">
 	<button
-		bind:this={menuItem.el}
 		class="MenuBar__menuitem"
 		class:MenuBar__menuitem--active={menuItem === activeItem}
 		role="menuitem"
@@ -34,6 +33,9 @@
 		on:click={(e) => handleClick(e, menuItem)}
 	>
 		{menuItem.value}
+		{#if menuItem.submenu}
+			<span class="MenuBar__menuitem-arrow">{'>'}</span>
+		{/if}
 	</button>
 	{#if menuItem.submenu}
 		<!-- svelte-ignore a11y-no-redundant-roles -->
@@ -49,3 +51,48 @@
 		</menu>
 	{/if}
 </li>
+
+<style>
+	.MenuBar__li {
+		position: relative;
+	}
+
+	.MenuBar__menuitem {
+		display: inline-flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		width: 100%;
+		white-space: nowrap;
+		appearance: none;
+		background: none;
+		border: none;
+		padding: 8px 16px;
+	}
+
+	.MenuBar__menuitem:hover:not(:focus-visible) {
+		outline: 1px solid black;
+	}
+
+	.MenuBar__submenu {
+		position: absolute;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		top: 100%;
+		left: 0;
+		background: lightcoral;
+		border: solid gray;
+		border-width: 1px;
+		display: none;
+	}
+
+	.MenuBar__submenu--open {
+		display: block;
+	}
+
+	.MenuBar__submenu :global(.MenuBar__submenu) {
+		top: 0;
+		left: 100%;
+	}
+</style>

@@ -1,7 +1,6 @@
 <script lang="ts" context="module">
 	export interface MenuItem {
 		value: string;
-		el: HTMLElement;
 		submenu?: MenuItem[];
 	}
 </script>
@@ -9,6 +8,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
+	import MenuBarItem from './MenuBarItem.svelte';
 
 	let menuBarEl: HTMLElement;
 
@@ -254,15 +254,15 @@
 		}
 
 		await tick();
-		activeItem?.el.focus();
+		(menuBarEl.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
 	}
 
-	async function handlePointerOver(event: PointerEvent, item: MenuItem) {
-		activeItem = item;
+	async function handlePointerOver(event: MenuBarItem['$$events_def']['pointerover']) {
+		activeItem = event.detail.menuItem;
 		if (menuBarEl.contains(document.activeElement)) {
-			openItem(item);
+			openItem(activeItem);
 			await tick();
-			activeItem?.el.focus();
+			(menuBarEl.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
 		}
 	}
 
@@ -277,10 +277,10 @@
 		canMenuAutoOpen = false;
 	}
 
-	function handleClick(event: MouseEvent, item: MenuItem) {
-		activeItem = item;
+	function handleClick(event: MenuBarItem['$$events_def']['click']) {
+		activeItem = event.detail.menuItem;
 		if (menuBarEl.contains(document.activeElement)) {
-			openItem(item);
+			openItem(activeItem);
 		}
 	}
 </script>
@@ -293,122 +293,14 @@
 	on:keydown={handleKeyDown}
 	on:focusout={handleFocusOut}
 >
-	{#each menuBar as menuitem}
-		<li class="MenuBar__li" role="none">
-			<button
-				bind:this={menuitem.el}
-				class="MenuBar__menuitem"
-				class:MenuBar__menuitem--active={menuitem === activeItem}
-				role="menuitem"
-				type="button"
-				tabindex={menuitem === activeItem ? 0 : -1}
-				aria-haspopup={menuitem.submenu ? 'menu' : undefined}
-				aria-expanded={menuitem.submenu ? (openItems.has(menuitem) ? 'true' : 'false') : undefined}
-				on:pointerover={(e) => handlePointerOver(e, menuitem)}
-				on:click={(e) => handleClick(e, menuitem)}
-			>
-				{menuitem.value}
-			</button>
-			{#if menuitem.submenu}
-				<!-- svelte-ignore a11y-no-redundant-roles -->
-				<menu
-					class="MenuBar__submenu"
-					class:MenuBar__submenu--open={openItems.has(menuitem)}
-					role="menu"
-				>
-					{#each menuitem.submenu as submenuitem}
-						<li class="MenuBar__li" role="none">
-							<button
-								bind:this={submenuitem.el}
-								class="MenuBar__menuitem"
-								role="menuitem"
-								type="button"
-								tabindex={submenuitem === activeItem ? 0 : -1}
-								aria-haspopup={submenuitem.submenu ? 'menu' : undefined}
-								aria-expanded={submenuitem.submenu
-									? openItems.has(submenuitem)
-										? 'true'
-										: 'false'
-									: undefined}
-								on:pointerover={(e) => handlePointerOver(e, submenuitem)}
-								on:click={(e) => handleClick(e, submenuitem)}
-							>
-								{submenuitem.value}
-
-								{#if submenuitem.submenu}
-									<span class="MenuBar__menuitem-arrow">{'>'}</span>
-								{/if}
-							</button>
-							{#if submenuitem.submenu}
-								<!-- This should be a recursive component but for the sake of the example all the depths are declared here -->
-								<!-- svelte-ignore a11y-no-redundant-roles -->
-								<menu
-									class="MenuBar__submenu"
-									class:MenuBar__submenu--open={openItems.has(submenuitem)}
-									role="menu"
-								>
-									{#each submenuitem.submenu as subsubmenuitem}
-										<li class="MenuBar__li" role="none">
-											<button
-												bind:this={subsubmenuitem.el}
-												class="MenuBar__menuitem"
-												role="menuitem"
-												type="button"
-												tabindex={subsubmenuitem === activeItem ? 0 : -1}
-												aria-haspopup={subsubmenuitem.submenu ? 'menu' : undefined}
-												aria-expanded={subsubmenuitem.submenu
-													? openItems.has(subsubmenuitem)
-														? 'true'
-														: 'false'
-													: undefined}
-												on:pointerover={(e) => handlePointerOver(e, subsubmenuitem)}
-												on:click={(e) => handleClick(e, subsubmenuitem)}
-											>
-												{subsubmenuitem.value}
-												{#if subsubmenuitem.submenu}
-													<span class="MenuBar__menuitem-arrow">{'>'}</span>
-												{/if}
-											</button>
-											{#if subsubmenuitem.submenu}
-												<!-- svelte-ignore a11y-no-redundant-roles -->
-
-												<menu
-													class="MenuBar__submenu"
-													class:MenuBar__submenu--open={openItems.has(subsubmenuitem)}
-													role="menu"
-												>
-													{#each subsubmenuitem.submenu as subsubsubmenuitem}
-														<li class="MenuBar__li" role="none">
-															<button
-																bind:this={subsubsubmenuitem.el}
-																class="MenuBar__menuitem"
-																role="menuitem"
-																type="button"
-																tabindex={menuitem === activeItem ? 0 : -1}
-																aria-haspopup={subsubsubmenuitem.submenu ? 'menu' : undefined}
-																aria-expanded={subsubsubmenuitem.submenu
-																	? openItems.has(subsubsubmenuitem)
-																		? 'true'
-																		: 'false'
-																	: undefined}
-																on:pointerover={(e) => handlePointerOver(e, subsubsubmenuitem)}
-																on:click={(e) => handleClick(e, subsubsubmenuitem)}
-															>
-																{subsubsubmenuitem.value}
-															</button>
-														</li>
-													{/each}
-												</menu>
-											{/if}
-										</li>
-									{/each}
-								</menu>
-							{/if}
-						</li>
-					{/each}
-				</menu>
-			{/if}
-		</li>
+	{#each menuBar as menuItem}
+		<MenuBarItem
+			{menuItem}
+			{activeItem}
+			{openItems}
+			on:click={handleClick}
+			on:pointerover={handlePointerOver}
+		/>
 	{/each}
 </menu>
 
@@ -421,48 +313,5 @@
 		margin: 0;
 		background: lightyellow;
 		border-block-end: 1px solid gray;
-	}
-
-	.MenuBar__li {
-		position: relative;
-	}
-
-	.MenuBar__menuitem {
-		display: inline-flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		width: 100%;
-		white-space: nowrap;
-		appearance: none;
-		background: none;
-		border: none;
-		padding: 8px 16px;
-	}
-
-	.MenuBar__menuitem:hover:not(:focus-visible) {
-		outline: 1px solid black;
-	}
-
-	.MenuBar__submenu {
-		position: absolute;
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		top: 100%;
-		left: 0;
-		background: lightcoral;
-		border: solid gray;
-		border-width: 1px;
-		display: none;
-	}
-
-	.MenuBar__submenu--open {
-		display: block;
-	}
-
-	.MenuBar__submenu .MenuBar__submenu {
-		top: 0;
-		left: 100%;
 	}
 </style>
