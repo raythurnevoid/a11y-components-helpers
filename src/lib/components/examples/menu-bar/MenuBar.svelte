@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import { open } from '../../../lib/autocomplete/autocomplete.js';
+	import { tick } from 'svelte';
 
 	let menuBarEl: HTMLElement;
 
@@ -59,263 +58,192 @@
 		}
 	] as MenuItem[];
 
-	let mapped: MappedDOM | undefined = undefined;
-
 	let canOpenMultipleItems = false;
 	let openItems = new Set<MenuItem>();
 	let itemPathMap = new Map<MenuItem, number[]>();
 	let activeItem: MenuItem | undefined = menuBar.at(0);
+	let canMenuOpen = false;
 
-	onMount(() => {
-		console.log(menuBar);
+	(function mapItemsId(items: MenuItem[], path: number[] = []) {
+		items.forEach((item, i) => {
+			itemPathMap.set(item, [...path, i]);
 
-		function createMappedDOM(menuBar: MenuItem[]) {
-			const objRefMap = new WeakMap<Element, any>();
-			const domRefMap = new WeakMap<any, Element>();
-
-			const dom = document.implementation.createDocument('', 'menubar', null);
-
-			function convert(el: Element, menu: MenuItem[], path: number[] = []) {
-				menu.forEach((menuItem, index) => {
-					const virtualDomMenuItem = dom.createElement('menuitem' as string);
-					virtualDomMenuItem.setAttribute('value', menuItem.value);
-					el.appendChild(virtualDomMenuItem);
-					objRefMap.set(virtualDomMenuItem, menuItem);
-					domRefMap.set(menuItem, virtualDomMenuItem);
-					itemPathMap.set(menuItem, [...path, index]);
-
-					if (menuItem.submenu) {
-						const virtualDomMenu = dom.createElement('menu');
-						virtualDomMenuItem.appendChild(virtualDomMenu);
-						objRefMap.set(virtualDomMenu, menuItem.submenu);
-						domRefMap.set(menuItem.submenu, virtualDomMenu);
-						convert(virtualDomMenu, menuItem.submenu, [...path, index]);
-					}
-				});
+			if (item.submenu) {
+				mapItemsId(item.submenu, [...path, i]);
 			}
+		});
+	})(menuBar);
 
-			const root = dom.firstElementChild!;
-			objRefMap.set(root, menuBar);
-			domRefMap.set(menuBar, root);
-			convert(root, menuBar);
-
-			return new MappedDOM(dom, objRefMap, domRefMap);
-		}
-
-		mapped = createMappedDOM(menuBar);
-	});
-
-	class MappedDOM {
-		canMenuOpen = false;
-
-		constructor(
-			public virtualDom: Document,
-			private objRefMap: WeakMap<Element, any>,
-			private domRefMap: WeakMap<any, Element>
-		) {}
-
-		getDom(obj: any) {
-			return this.domRefMap.get(obj);
-		}
-
-		getObj(el: Element) {
-			return this.objRefMap.get(el);
-		}
-
-		navigate(event: KeyboardEvent): boolean {
-			let isToHandle: boolean = false;
-			switch (event.key) {
-				case 'ArrowRight':
-				case 'ArrowLeft':
-				case 'ArrowDown':
-				case 'ArrowUp':
-				case 'Enter':
-				case ' ':
-				case 'Escape':
-				case 'Home':
-				case 'PageUp':
-				case 'End':
-				case 'PageDown':
-					isToHandle = true;
-					event.preventDefault();
-					break;
-				default:
-					return false;
-			}
-
-			if (!activeItem) {
-				return false;
-			}
-
-			const activeItemPath = itemPathMap.get(activeItem)!;
-			const isActiveElInMenuBar = activeItemPath.length === 1;
-			let itemToActivate: MenuItem | null = null;
-			let itemToOpen: MenuItem | null = null;
-
-			if (event.key === 'Escape') {
-				itemToActivate = menuBar.at(activeItemPath.at(0)!)!;
-			} else if (isActiveElInMenuBar) {
-				switch (event.key) {
-					case 'ArrowUp':
-					case 'ArrowDown':
-					case 'Enter':
-					case ' ':
-						if (activeItem.submenu) {
-							itemToOpen = activeItem;
-						}
-						break;
+	function digThroughItems(path: number[], cb?: (item: MenuItem, index: number) => void) {
+		let pointer: MenuItem | undefined = path.length ? menuBar.at(path.at(0)!) : undefined;
+		if (pointer) {
+			for (let i = 0; i < path.length; i++) {
+				if (i > 0) {
+					const index = path.at(i)!;
+					pointer = pointer.submenu?.at(index);
 				}
+				if (!pointer) break;
+				cb?.(pointer, i);
+			}
+		}
+
+		return pointer;
+	}
+
+	function openItem(itemToOpen: MenuItem) {
+		openItems.clear();
+		const itemToOpenPath = itemPathMap.get(itemToOpen)!;
+
+		digThroughItems(itemToOpenPath, (pointer) => {
+			openItems.add(pointer);
+		});
+
+		openItems = openItems;
+		canMenuOpen = true;
+	}
+
+	async function handleKeyDown(event: KeyboardEvent) {
+		if (!activeItem) {
+			return;
+		}
+
+		switch (event.key) {
+			case 'ArrowRight':
+			case 'ArrowLeft':
+			case 'ArrowDown':
+			case 'ArrowUp':
+			case 'Enter':
+			case ' ':
+			case 'Escape':
+			case 'Home':
+			case 'PageUp':
+			case 'End':
+			case 'PageDown':
+				event.preventDefault();
+
+				const activeItemPath = itemPathMap.get(activeItem)!;
+				const isActiveElInMenuBar = activeItemPath.length === 1;
+				let itemToActivate: MenuItem | null = null;
+				let itemToOpen: MenuItem | null = null;
 
 				switch (event.key) {
-					case 'ArrowRight':
-						itemToActivate = menuBar.at(activeItemPath.at(0)! + 1)!;
-						break;
-					case 'ArrowLeft':
-						itemToActivate = menuBar.at(activeItemPath.at(0)! - 1)!;
-						break;
-					case 'ArrowDown':
-					case 'Enter':
-					case ' ':
-						if (itemToOpen && itemToOpen.submenu!.at(0)) {
-							itemToActivate = itemToOpen.submenu!.at(0)!;
-						}
-						break;
-					case 'ArrowUp':
-						if (itemToOpen && itemToOpen.submenu!.at(-1)) {
-							itemToActivate = itemToOpen.submenu!.at(-1)!;
-						}
-						break;
-				}
-
-				switch (event.key) {
-					case 'ArrowRight':
-					case 'ArrowLeft':
+					case 'Escape':
+						itemToActivate = menuBar.at(activeItemPath.at(0)!)!;
 						if (openItems.size > 0) {
 							openItems.clear();
 							openItems = openItems;
 						}
-						if (itemToActivate && this.canMenuOpen) {
-							if (itemToActivate.submenu) {
-								itemToOpen = itemToActivate;
-							}
-						}
-				}
-			} else {
-				switch (event.key) {
-					case 'ArrowDown':
-						itemToActivate =
-							this.getItemFromPath([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! + 1]) ??
-							null;
+						canMenuOpen = false;
 						break;
-					case 'ArrowUp':
-						itemToActivate =
-							this.getItemFromPath([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! - 1]) ??
-							null;
+					case 'Home':
+						itemToActivate = digThroughItems([...activeItemPath.slice(0, -1), 0]) ?? null;
 						break;
-
-					case 'Enter':
-					case ' ':
-						if (activeItem && activeItem.submenu) {
-							itemToOpen = activeItem;
-
-							if (itemToOpen.submenu!.at(0)) {
-								itemToActivate = itemToOpen.submenu!.at(0)!;
-							}
-						}
+					case 'End':
+						itemToActivate = digThroughItems([...activeItemPath.slice(0, -1), -1]) ?? null;
 						break;
-					case 'ArrowRight':
-						if (activeItem.submenu) {
-							itemToOpen = activeItem;
+					default:
+						if (isActiveElInMenuBar) {
+							switch (event.key) {
+								case 'ArrowRight':
+								case 'ArrowLeft':
+									if (event.key === 'ArrowRight') {
+										itemToActivate =
+											menuBar.at(activeItemPath.at(0)! + 1) ?? menuBar.at(0)! ?? null;
+									} else {
+										itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
+									}
 
-							if (itemToOpen.submenu!.at(0)) {
-								itemToActivate = itemToOpen.submenu!.at(0)!;
+									if (openItems.size > 0) {
+										openItems.clear();
+										openItems = openItems;
+									}
+
+									if (canMenuOpen && itemToActivate?.submenu) {
+										itemToOpen = itemToActivate;
+									}
+
+									break;
+								case 'ArrowUp':
+								case 'ArrowDown':
+								case 'Enter':
+								case ' ':
+									if (activeItem.submenu) {
+										itemToOpen = activeItem;
+									}
+
+									if (!itemToOpen) {
+										break;
+									}
+
+									if (event.key === 'ArrowUp' && itemToOpen.submenu!.at(-1)) {
+										itemToActivate = itemToOpen.submenu!.at(-1)!;
+									} else if (itemToOpen.submenu!.at(0)) {
+										itemToActivate = itemToOpen.submenu!.at(0)!;
+									}
+
+									break;
 							}
 						} else {
-							itemToActivate = itemToOpen = menuBar.at(activeItemPath.at(0)! + 1) ?? null;
-						}
-						break;
-					case 'ArrowLeft':
-						if (activeItemPath.length > 2) {
-							itemToActivate = this.getItemFromPath(activeItemPath.slice(0, -1)) ?? null;
-							itemToOpen = this.getItemFromPath(activeItemPath.slice(0, -2)) ?? null;
-						} else {
-							itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
-							if (itemToActivate && this.canMenuOpen && itemToActivate.submenu) {
-								itemToOpen = itemToActivate;
+							switch (event.key) {
+								case 'ArrowDown':
+									itemToActivate =
+										digThroughItems([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! + 1]) ??
+										digThroughItems([...activeItemPath.slice(0, -1), 0]) ??
+										null;
+									break;
+								case 'ArrowUp':
+									itemToActivate =
+										digThroughItems([...activeItemPath.slice(0, -1), activeItemPath.at(-1)! - 1]) ??
+										null;
+									break;
+
+								case 'Enter':
+								case ' ':
+									if (activeItem && activeItem.submenu) {
+										itemToOpen = activeItem;
+
+										if (itemToOpen.submenu!.at(0)) {
+											itemToActivate = itemToOpen.submenu!.at(0)!;
+										}
+									}
+									break;
+								case 'ArrowRight':
+									if (activeItem.submenu) {
+										itemToOpen = activeItem;
+
+										if (itemToOpen.submenu!.at(0)) {
+											itemToActivate = itemToOpen.submenu!.at(0)!;
+										}
+									} else {
+										itemToActivate = itemToOpen =
+											menuBar.at(activeItemPath.at(0)! + 1) ?? menuBar.at(0) ?? null;
+									}
+									break;
+								case 'ArrowLeft':
+									if (activeItemPath.length > 2) {
+										itemToActivate = digThroughItems(activeItemPath.slice(0, -1)) ?? null;
+										itemToOpen = digThroughItems(activeItemPath.slice(0, -2)) ?? null;
+									} else {
+										itemToActivate = menuBar.at(activeItemPath.at(0)! - 1) ?? null;
+										if (itemToActivate && canMenuOpen && itemToActivate.submenu) {
+											itemToOpen = itemToActivate;
+										}
+									}
+									break;
 							}
 						}
 						break;
 				}
-			}
 
-			switch (event.key) {
-				case 'Home':
-					itemToActivate = this.getItemFromPath([...activeItemPath.slice(0, -1), 0]) ?? null;
-					break;
-				case 'End':
-					itemToActivate = this.getItemFromPath([...activeItemPath.slice(0, -1), -1]) ?? null;
-					break;
-			}
-
-			if (itemToOpen) {
-				this.openMenuFromItem(itemToOpen);
-			} else if (event.key === 'Escape') {
-				openItems.clear();
-				openItems = openItems;
-				this.canMenuOpen = false;
-			}
-
-			return true;
-		}
-
-		private getItemFromPath(path: number[]) {
-			let pointer: MenuItem | undefined = undefined;
-			for (const index of path) {
-				if (!pointer) {
-					pointer = menuBar.at(index);
-				} else {
-					pointer = pointer.submenu?.at(index);
+				if (itemToActivate) {
+					activeItem = itemToActivate;
 				}
 
-				if (!pointer) {
-					break;
-				}
-			}
-
-			return pointer;
-		}
-
-		openMenuFromItem(itemToOpen: MenuItem) {
-			openItems.clear();
-			const itemToOpenPath = itemPathMap.get(itemToOpen)!;
-			let pointer: MenuItem | undefined = undefined;
-			for (const index of itemToOpenPath) {
-				if (!pointer) {
-					pointer = menuBar.at(index);
-				} else {
-					pointer = pointer.submenu?.at(index);
+				if (itemToOpen) {
+					openItem(itemToOpen);
 				}
 
-				if (!pointer) {
-					break;
-				}
-
-				openItems.add(pointer);
-			}
-			openItems = openItems;
-			this.canMenuOpen = true;
-		}
-
-		closeAllMenus() {
-			openItems.clear();
-			openItems = openItems;
-		}
-	}
-
-	async function handleKeyDown(event: KeyboardEvent) {
-		const mutated = mapped!.navigate(event);
-		if (mutated) {
-			mapped = mapped;
+				break;
 		}
 
 		await tick();
@@ -325,8 +253,7 @@
 	async function handlePointerOver(event: PointerEvent, item: MenuItem) {
 		activeItem = item;
 		if (menuBarEl.contains(document.activeElement)) {
-			mapped?.openMenuFromItem(item);
-			mapped = mapped;
+			openItem(item);
 			await tick();
 			activeItem?.el.focus();
 		}
@@ -337,24 +264,16 @@
 			return;
 		}
 
-		mapped?.closeAllMenus();
-		mapped = mapped;
+		openItems.clear();
+		openItems = openItems;
 	}
 
 	function handleClick(event: MouseEvent, item: MenuItem) {
 		activeItem = item;
 		if (menuBarEl.contains(document.activeElement)) {
-			mapped?.openMenuFromItem(item);
-			mapped = mapped;
+			openItem(item);
 		}
 	}
-
-	// function openItem(item: MenuItem) {
-	// 	this.closeVirtualDomMenuAtItemLevel(itemEl);
-	// 	if (itemEl.firstElementChild) {
-	// 		this.openVirtualDomMenu(itemEl.firstElementChild);
-	// 	}
-	// }
 
 	interface MenuItem {
 		value: string;
@@ -362,8 +281,6 @@
 		submenu?: MenuItem[];
 	}
 </script>
-
-{JSON.stringify(openItems)}
 
 <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 <menu
@@ -387,7 +304,7 @@
 			>
 				{menuitem.value}
 			</button>
-			{#if menuitem.submenu && mapped}
+			{#if menuitem.submenu}
 				<!-- svelte-ignore a11y-no-redundant-roles -->
 				<menu
 					class="MenuBar__submenu"
