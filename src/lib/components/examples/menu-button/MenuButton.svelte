@@ -4,218 +4,178 @@
 
 <script lang="ts">
 	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, tick } from 'svelte';
 
+	let el: HTMLElement;
 	let id: string = `MenuButton--${index++}`;
-	let menuItems: string[] = ['Action 1', 'Action 2', 'Action 3'];
 
-	let el: HTMLElement | undefined = undefined;
-	let menuId: string = `${id}__menu`;
+	let menuItems: string[] = ['A', 'B', 'C'];
 
 	let open: boolean = false;
-	let activeOptionIndex: number | null = null;
-
-	let wrapFocus: boolean = true;
-
-	const temporaryOnKeyDownFilterStore = new TemporaryOnKeyDownFilterStore();
+	let activeItem: string | null | undefined = undefined;
+	const printableCharRegex = /^[a-zA-Z0-9]$/;
+	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
 
 	const dispatch = createEventDispatcher<{
 		select: { value: string };
 	}>();
 
-	function handleClick() {
-		if (open) {
-			closeMenu();
-		} else {
-			openMenu();
-		}
-	}
-
-	function handleButtonKeyDown(event: KeyboardEvent) {
-		if (event.ctrlKey || event.altKey || event.metaKey) {
-			return;
-		}
-
-		switch (event.key) {
-			case ' ':
-			case 'Enter':
-			case 'ArrowDown':
-			case 'ArrowUp':
-			case 'Escape':
-				event.preventDefault();
-				break;
-		}
-
-		if (!open) {
-			switch (event.key) {
-				case ' ':
-				case 'Enter':
-				case 'ArrowDown':
-				case 'ArrowUp':
-					open = true;
-					break;
-			}
-
-			switch (event.key) {
-				case ' ':
-				case 'Enter':
-				case 'ArrowDown':
-					activeOptionIndex = 0;
-					break;
-
-				case 'ArrowUp':
-					activeOptionIndex = menuItems.length - 1;
-					break;
-			}
-		} else {
-			activeOptionIndex = activeOptionIndex as number;
-
-			switch (event.key) {
-				case 'Home':
-				case 'PageUp':
-				case 'End':
-				case 'PageDown':
-					event.preventDefault();
-					break;
-			}
-
-			switch (event.key) {
-				case 'Escape':
-					closeMenu();
-					break;
-
-				case 'ArrowDown':
-					if (wrapFocus && activeOptionIndex === menuItems.length - 1) {
-						activeOptionIndex = 0;
-					} else {
-						activeOptionIndex = Math.min(activeOptionIndex + 1, menuItems.length - 1);
-					}
-
-					break;
-
-				case 'ArrowUp':
-					if (wrapFocus && activeOptionIndex === 0) {
-						activeOptionIndex = menuItems.length - 1;
-					} else {
-						activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
-					}
-
-					break;
-
-				case 'Home':
-				case 'PageUp':
-					activeOptionIndex = 0;
-					break;
-
-				case 'End':
-				case 'PageDown':
-					activeOptionIndex = menuItems.length - 1;
-					break;
-
-				case ' ':
-				case 'Enter':
-					selectItem(menuItems[activeOptionIndex]);
-					break;
-
-				default:
-					if (temporaryOnKeyDownFilterStore.handleOnKeyDown(event)) {
-						event.preventDefault();
-
-						const itemsToSearch = menuItems.slice(activeOptionIndex);
-						let index = findIndexOfItemStartingWith(
-							itemsToSearch,
-							temporaryOnKeyDownFilterStore.filter
-						);
-						if (index === -1) {
-							index = findIndexOfItemStartingWith(menuItems, temporaryOnKeyDownFilterStore.filter);
-						}
-
-						if (index !== -1) {
-							activeOptionIndex = index;
-						}
-					}
-			}
-		}
-	}
-
-	function handleBackgroundPointerUp(event: PointerEvent) {
-		const target = event.target as HTMLElement;
-
-		if (!open || el?.contains(target)) {
-			return;
-		}
-
-		closeMenu();
-	}
-
-	function handleFocusOut() {
-		if (!open || !document.hasFocus() || el?.querySelector(':scope:hover, :hover')) {
-			return;
-		}
-
-		closeMenu();
-	}
-
-	function findIndexOfItemStartingWith(items: string[], filter: string) {
-		return items.findIndex((i) => i.startsWith(filter));
-	}
-
-	function getMenuItemId(index: number | null) {
-		if (index === null) return undefined;
-		return `${menuId}__item--${menuItems[index]}`;
+	function focusActiveItem() {
+		(el.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
 	}
 
 	function openMenu() {
 		open = true;
-		activeOptionIndex = 0;
 	}
 
 	function closeMenu() {
 		open = false;
-		activeOptionIndex = null;
+		activeItem = null;
 	}
 
 	function selectItem(value: string) {
 		dispatch('select', { value });
 		closeMenu();
 	}
+
+	async function handleClick() {
+		if (open) {
+			closeMenu();
+		} else {
+			openMenu();
+			activeItem = menuItems.at(0) ?? null;
+		}
+
+		await tick();
+		focusActiveItem();
+	}
+
+	async function handleKeyDown(event: KeyboardEvent) {
+		switch (event.key) {
+			case 'ArrowDown':
+			case 'ArrowUp':
+			case 'Enter':
+			case ' ':
+			case 'Escape':
+			case 'Home':
+			case 'PageUp':
+			case 'End':
+			case 'PageDown':
+				event.preventDefault();
+
+				switch (event.key) {
+					case 'Escape':
+						closeMenu();
+						break;
+					default:
+						if (!open) {
+							switch (event.key) {
+								case 'ArrowDown':
+								case 'ArrowUp':
+								case 'Enter':
+								case ' ':
+									openMenu();
+									break;
+							}
+
+							switch (event.key) {
+								case 'Enter':
+								case ' ':
+								case 'ArrowDown':
+									activeItem = menuItems.at(0) ?? null;
+									break;
+								case 'ArrowUp':
+									activeItem = menuItems.at(-1) ?? null;
+									break;
+							}
+						} else {
+							switch (event.key) {
+								case 'Home':
+								case 'PageUp':
+									activeItem = menuItems.at(0) ?? null;
+									break;
+								case 'End':
+								case 'PageDown':
+									activeItem = menuItems.at(-1) ?? null;
+									break;
+								case 'ArrowDown':
+								case 'ArrowUp':
+									const activeItemIndex = menuItems.indexOf(activeItem!);
+									switch (event.key) {
+										case 'ArrowDown':
+											activeItem = menuItems.at(activeItemIndex + 1) ?? menuItems.at(0) ?? null;
+											null;
+											break;
+										case 'ArrowUp':
+											activeItem = menuItems.at(activeItemIndex - 1) ?? null;
+											break;
+									}
+									break;
+								case 'Enter':
+								case ' ':
+									if (activeItem) selectItem(activeItem);
+									break;
+							}
+						}
+						break;
+				}
+				break;
+			default:
+				if (event.key.match(printableCharRegex)) {
+					temporaryFilter.addChar(event.key);
+					activeItem =
+						menuItems.find((item) =>
+							item.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase())
+						) ?? activeItem;
+				}
+				break;
+		}
+
+		await tick();
+		focusActiveItem();
+	}
+
+	function handleFocusOut(event: FocusEvent) {
+		if (!open || !document.hasFocus() || el?.contains(event.relatedTarget as Element)) {
+			return;
+		}
+
+		closeMenu();
+	}
+
+	async function handlePointerOver(menuItem: string) {
+		activeItem = menuItem;
+
+		await tick();
+		focusActiveItem();
+	}
 </script>
 
-<svelte:window on:pointerup={handleBackgroundPointerUp} />
-
-<div bind:this={el} class="MenuButton" on:focusout={handleFocusOut}>
+<div bind:this={el} class="MenuButton" on:focusout={handleFocusOut} on:keydown={handleKeyDown}>
 	<button
 		{id}
 		class="MenuButton__button"
 		on:click={handleClick}
-		on:keydown={handleButtonKeyDown}
 		aria-haspopup="true"
-		aria-controls={menuId}
 		aria-expanded={open}
 	>
 		Menu
 	</button>
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 	<!-- svelte-ignore a11y-no-redundant-roles -->
-	<menu
-		id={menuId}
-		class="MenuButton__menu"
-		class:Menu--open={open}
-		role="menu"
-		tabindex="-1"
-		aria-labelledby={id}
-		aria-activedescendant={getMenuItemId(activeOptionIndex)}
-	>
+	<menu class="MenuButton__menu" class:Menu--open={open} role="menu" aria-labelledby={id}>
 		{#each menuItems as menuItem, index}
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
-			<li
-				id={getMenuItemId(index)}
-				class="MenuButton__menu-item"
-				class:MenuButton__menu-item--active={index === activeOptionIndex}
-				role="menuitem"
-				on:click={() => selectItem(menuItem)}
-			>
-				{menuItem}
+			<li class="MenuButton__li" role="presentation">
+				<button
+					class="MenuButton__menuitem"
+					role="menuitem"
+					tabindex={menuItem === activeItem ? 0 : -1}
+					on:click={() => selectItem(menuItem)}
+					on:pointerover={() => handlePointerOver(menuItem)}
+				>
+					{menuItem}
+				</button>
 			</li>
 		{/each}
 	</menu>
@@ -246,17 +206,28 @@
 		background-color: lightyellow;
 	}
 
+	.MenuButton__li {
+		padding: 0;
+	}
+
 	.Menu--open {
 		display: block;
 	}
 
-	.MenuButton__menu-item {
+	.MenuButton__menuitem {
 		padding-inline: 16px;
 		cursor: pointer;
 		user-select: none;
+		appearance: none;
+		background: transparent;
+		border: none;
 	}
 
-	.MenuButton__menu-item--active {
+	.MenuButton__menuitem:focus {
 		background-color: lightgray;
+	}
+
+	.MenuButton__menuitem:focus-visible {
+		outline: 2px solid black;
 	}
 </style>

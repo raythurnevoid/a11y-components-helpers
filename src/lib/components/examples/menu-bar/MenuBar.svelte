@@ -10,7 +10,7 @@
 	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
 	import MenuBarItem from './MenuBarItem.svelte';
 
-	let menuBarEl: HTMLElement;
+	let el: HTMLElement;
 
 	const menuBar = [
 		{
@@ -99,6 +99,16 @@
 		canMenuAutoOpen = true;
 	}
 
+	function focusActiveItem() {
+		(el.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
+	}
+
+	function closeMenus() {
+		openItems.clear();
+		openItems = openItems;
+		canMenuAutoOpen = false;
+	}
+
 	async function handleKeyDown(event: KeyboardEvent) {
 		if (!activeItem) {
 			return;
@@ -130,15 +140,15 @@
 					case 'Escape':
 						itemToActivate = activeItemAncenstry.at(0)!;
 						if (openItems.size > 0) {
-							openItems.clear();
-							openItems = openItems;
+							closeMenus();
 						}
-						canMenuAutoOpen = false;
 						break;
 					case 'Home':
+					case 'PageUp':
 						itemToActivate = activeItemAncenstry.at(-1)!.submenu?.at(0) ?? null;
 						break;
 					case 'End':
+					case 'PageDown':
 						itemToActivate = activeItemAncenstry.at(-1)!.submenu?.at(-1) ?? null;
 						break;
 					default:
@@ -243,7 +253,7 @@
 				break;
 			default:
 				if (event.key.match(printableCharRegex)) {
-					temporaryFilter.handleOnKeyDown(event);
+					temporaryFilter.addChar(event.key);
 					const currentMenu = activeItemAncenstry.at(-1)?.submenu ?? menuBar;
 					activeItem =
 						currentMenu.find((item) =>
@@ -254,32 +264,31 @@
 		}
 
 		await tick();
-		(menuBarEl.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
+		focusActiveItem();
 	}
 
 	async function handlePointerOver(event: MenuBarItem['$$events_def']['pointerover']) {
 		activeItem = event.detail.menuItem;
-		if (menuBarEl.contains(document.activeElement)) {
+		if (el.contains(document.activeElement)) {
 			openItem(activeItem);
+
 			await tick();
-			(menuBarEl.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
+			focusActiveItem();
 		}
 	}
 
 	function handleFocusOut(event: FocusEvent) {
-		if (!document.hasFocus() || menuBarEl?.contains(event.relatedTarget as Element)) {
+		if (!document.hasFocus() || el?.contains(event.relatedTarget as Element)) {
 			return;
 		}
 
-		openItems.clear();
-		openItems = openItems;
+		closeMenus();
 		activeItem = itemAncestryMap.get(activeItem!)!.at(0)! ?? activeItem;
-		canMenuAutoOpen = false;
 	}
 
 	function handleClick(event: MenuBarItem['$$events_def']['click']) {
 		activeItem = event.detail.menuItem;
-		if (menuBarEl.contains(document.activeElement)) {
+		if (el.contains(document.activeElement)) {
 			openItem(activeItem);
 		}
 	}
@@ -287,7 +296,7 @@
 
 <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 <menu
-	bind:this={menuBarEl}
+	bind:this={el}
 	class="MenuBar"
 	role="menubar"
 	on:keydown={handleKeyDown}
