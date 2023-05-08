@@ -156,7 +156,7 @@
 		{id}
 		class="MenuButton__button"
 		on:click={handleClick}
-		aria-haspopup="true"
+		aria-haspopup="menu"
 		aria-expanded={open}
 	>
 		Menu
