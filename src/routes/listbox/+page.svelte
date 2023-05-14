@@ -11,4 +11,3 @@
 	Selected: {selected}
 </div>
 <Listbox on:select={handleSelect} />
-<button>dummy</button>

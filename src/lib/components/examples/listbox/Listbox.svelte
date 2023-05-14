@@ -4,29 +4,41 @@
 
 <script lang="ts">
 	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
-	import { createEventDispatcher, tick } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
+	import ElementInViewChecker from '../../../ElementInViewChecker.js';
 
 	let el: HTMLElement;
-	let id: string = `MenuButton--${index++}`;
+	let id: string = `Listbox--${index++}`;
+	let labelId: string = `${id}__label`;
 
-	let menuItems: string[] = ['A', 'B', 'C'];
-
-	let activeItem: string | null | undefined = undefined;
-	let selectedItem: string | null | undefined = undefined;
-	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
+	let options: string[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
+	let value: string | null | undefined = undefined;
 
 	const dispatch = createEventDispatcher<{
 		select: { value: string };
 	}>();
 
-	function focusActiveItem() {
-		(el.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
+	let activeOption: string | null | undefined = undefined;
+	const printableCharRegex = /^[a-zA-Z0-9]$/;
+	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
+
+	let elementInViewChecker: ElementInViewChecker;
+
+	onMount(() => {
+		elementInViewChecker = new ElementInViewChecker(el);
+
+		() => {
+			elementInViewChecker.destroy();
+		};
+	});
+
+	function selectOption(optionValue: string) {
+		value = optionValue;
+		dispatch('select', { value: optionValue });
 	}
 
-	function selectItem(value: string) {
-		selectedItem = activeItem = value;
-		dispatch('select', { value });
+	function getOptionId(option: string) {
+		return `${id}__option--${option}`;
 	}
 
 	async function handleKeyDown(event: KeyboardEvent) {
@@ -35,111 +47,113 @@
 			case 'ArrowUp':
 			case 'Enter':
 			case ' ':
-			case 'Escape':
 			case 'Home':
 			case 'End':
 				event.preventDefault();
 
 				switch (event.key) {
-					case 'Escape':
+					case 'Home':
+						activeOption = options.at(0) ?? null;
 						break;
-					default:
+					case 'End':
+						activeOption = options.at(-1) ?? null;
+						break;
+					case 'ArrowDown':
+					case 'ArrowUp':
+						const activeOptionIndex = activeOption
+							? options.indexOf(activeOption)
+							: value
+							? options.indexOf(value)
+							: -1;
 						switch (event.key) {
-							case 'Home':
-								activeItem = menuItems.at(0) ?? null;
-								break;
-							case 'End':
-								activeItem = menuItems.at(-1) ?? null;
-								break;
 							case 'ArrowDown':
-							case 'ArrowUp':
-								const activeItemIndex = menuItems.indexOf(selectedItem!);
-								switch (event.key) {
-									case 'ArrowDown':
-										activeItem = menuItems.at(activeItemIndex + 1) ?? menuItems.at(0) ?? null;
-										null;
-										break;
-									case 'ArrowUp':
-										activeItem = menuItems.at(activeItemIndex - 1) ?? null;
-										break;
-								}
+								activeOption = options.at(activeOptionIndex + 1) ?? options.at(0) ?? null;
+								null;
 								break;
-							case 'Enter':
-							case ' ':
-								// selectItem(activeItem ?? '');
+							case 'ArrowUp':
+								activeOption = options.at(activeOptionIndex - 1) ?? null;
 								break;
 						}
-						selectItem(activeItem ?? '');
+						break;
+					case 'Enter':
+					case ' ':
+						selectOption(activeOption ?? '');
 						break;
 				}
 				break;
 			default:
 				if (event.key.match(printableCharRegex)) {
 					temporaryFilter.addChar(event.key);
-					activeItem =
-						menuItems.find((item) =>
+					activeOption =
+						options.find((item) =>
 							item.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase())
-						) ?? activeItem;
+						) ?? activeOption;
 				}
 				break;
 		}
 
-		await tick();
-		focusActiveItem();
+		if (activeOption) {
+			const activeOptionEl = document.getElementById(getOptionId(activeOption));
+			if (activeOptionEl && !(await elementInViewChecker.check(activeOptionEl))) {
+				activeOptionEl.scrollIntoView({ block: 'nearest' });
+			}
+		}
 	}
 
 	function handleClick(menuItem: string) {
-		selectItem(menuItem);
+		activeOption = menuItem;
+		selectOption(menuItem);
 	}
 </script>
 
-<label
-	>test
+<div {id}>
+	<span id={labelId}>Listbox label</span>
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 	<menu
 		bind:this={el}
-		class="MenuButton"
+		class="Listbox"
 		role="listbox"
-		tabindex={!activeItem ? 0 : -1}
+		tabindex={0}
+		aria-labelledby={labelId}
+		aria-activedescendant={activeOption ? getOptionId(activeOption) : ''}
 		on:keydown={handleKeyDown}
+		on:focus
 	>
-		{#each menuItems as menuItem}
+		{#each options as option}
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
-			<li class="MenuButton__li" role="presentation">
-				<button
-					class="MenuButton__menuitem"
-					class:MenuButton__menuitem--selected={selectedItem === menuItem}
-					role="option"
-					aria-selected={selectedItem === menuItem}
-					tabindex={activeItem === menuItem ? 0 : -1}
-					on:click={() => handleClick(menuItem)}
-				>
-					{menuItem}
-				</button>
+			<li
+				id={getOptionId(option)}
+				class="Listbox__option"
+				class:Listbox__option--active={activeOption === option}
+				class:Listbox__option--selected={value === option}
+				role="option"
+				aria-selected={value === option}
+				on:click={() => handleClick(option)}
+			>
+				{option}
 			</li>
 		{/each}
 	</menu>
-</label>
+</div>
 
 <style>
-	.MenuButton {
+	.Listbox {
 		list-style: none;
 		border: 1px solid black;
 		flex-direction: column;
 		width: max-content;
 		padding: 0;
 		margin: 0;
+		height: 300px;
+		width: 500px;
+		overflow-y: auto;
 	}
 
-	.MenuButton:focus-within {
+	.Listbox:focus {
 		outline: 2px solid black;
 	}
 
-	.MenuButton__li {
-		padding: 0;
-	}
-
-	.MenuButton__menuitem {
+	.Listbox__option {
 		padding: 8px 32px;
 		cursor: pointer;
 		user-select: none;
@@ -148,20 +162,19 @@
 		border: none;
 	}
 
-	.MenuButton__menuitem--selected {
-		background-color: orange;
-	}
-
-	.MenuButton__menuitem:focus {
+	.Listbox:focus .Listbox__option--active {
 		background-color: lightcoral;
 	}
 
-	.MenuButton__menuitem:focus-visible {
+	.Listbox__option--selected {
+		background-color: orange;
+	}
+
+	.Listbox__option:focus-visible {
 		outline: 2px solid black;
 	}
 
-	.MenuButton__li:has(.MenuButton__menuitem:empty),
-	.MenuButton__menuitem:empty {
+	.Listbox__option:empty {
 		height: 0;
 		opacity: 0;
 		pointer-events: none;
