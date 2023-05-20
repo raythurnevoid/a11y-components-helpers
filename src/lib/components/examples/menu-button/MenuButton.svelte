@@ -8,6 +8,7 @@
 
 	let el: HTMLElement;
 	let id: string = `MenuButton--${index++}`;
+	const menuId = `"${id}__menu"`;
 
 	let menuItems: string[] = ['A', 'B', 'C'];
 
@@ -158,13 +159,20 @@
 		on:click={handleClick}
 		aria-haspopup="menu"
 		aria-expanded={open}
+		aria-controls={menuId}
 	>
 		Menu
 	</button>
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 	<!-- svelte-ignore a11y-no-redundant-roles -->
-	<menu class="MenuButton__menu" class:Menu--open={open} role="menu" aria-labelledby={id}>
-		{#each menuItems as menuItem, index}
+	<menu
+		id={menuId}
+		class="MenuButton__menu"
+		class:Menu--open={open}
+		role="menu"
+		aria-labelledby={id}
+	>
+		{#each menuItems as menuItem}
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
 			<li class="MenuButton__li" role="presentation">
 				<button
