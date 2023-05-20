@@ -120,14 +120,15 @@
 		on:focus
 	>
 		{#each options as option}
+			{@const isSelected = value === option}
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
 			<li
 				id={getOptionId(option)}
 				class="Listbox__option"
 				class:Listbox__option--active={activeOption === option}
-				class:Listbox__option--selected={value === option}
+				class:Listbox__option--selected={isSelected}
 				role="option"
-				aria-selected={value === option}
+				aria-selected={isSelected}
 				on:click={() => handleClick(option)}
 			>
 				{option}
