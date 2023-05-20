@@ -9,7 +9,7 @@
 
 	function handleClick(event: Accordion['$$events_def']['click'], index: number) {
 		accordions.forEach((accordion, i) => {
-			accordions[i].open = event.detail.willOpen ? false : accordion.open;
+			accordions.at(i)!.open = event.detail.willOpen ? false : accordion.open;
 		});
 	}
 
@@ -19,7 +19,7 @@
 			case 'ArrowDown':
 			case 'Home':
 			case 'End':
-				accordions.forEach((_, i) => (accordions[i].open = false));
+				accordions.forEach((_, i) => (accordions.at(i)!.open = false));
 		}
 
 		switch (event.detail.key) {
