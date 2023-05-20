@@ -97,6 +97,8 @@
 				case ' ':
 				case 'Home':
 				case 'End':
+				case 'Control':
+				case 'Shift':
 					event.preventDefault();
 
 					switch (event.key) {
@@ -220,6 +222,13 @@
 									break;
 								}
 							}
+
+							if (activeOptions.length > 0) {
+								const activeOptionEl = document.getElementById(getOptionId(activeOptions.at(-1)!));
+								if (activeOptionEl && !(await elementInViewChecker.check(activeOptionEl))) {
+									activeOptionEl.scrollIntoView({ block: 'nearest' });
+								}
+							}
 							break;
 
 						case 'Enter':
@@ -238,13 +247,6 @@
 						activeOptions = newActiveOption ? [newActiveOption] : [];
 					}
 					break;
-			}
-		}
-
-		if (activeOptions.length > 0) {
-			const activeOptionEl = document.getElementById(getOptionId(activeOptions.at(-1)!));
-			if (activeOptionEl && !(await elementInViewChecker.check(activeOptionEl))) {
-				activeOptionEl.scrollIntoView({ block: 'nearest' });
 			}
 		}
 	}
@@ -308,15 +310,11 @@
 				}
 			} else {
 				activeOptions = [menuItem];
-				toggleOptions([menuItem]);
 			}
 		}
 	}
 </script>
 
-rangeSelectionIndexStart: {rangeSelectionIndexStart}<br />
-rangeSelectionIndexEnd: {rangeSelectionIndexEnd}<br />
-activeOptions: {activeOptions}
 <div {id}>
 	<span id={labelId}>Listbox label</span>
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
@@ -376,8 +374,12 @@ activeOptions: {activeOptions}
 		border: none;
 	}
 
-	.Listbox:focus .Listbox__option--active {
+	.Listbox .Listbox__option--active {
 		background-color: lightcoral;
+	}
+
+	.Listbox:focus .Listbox__option--active {
+		background-color: coral;
 	}
 
 	.Listbox:focus .Listbox__option--focus {
