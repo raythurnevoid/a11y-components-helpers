@@ -26,7 +26,7 @@
 		}
 	];
 	let flatOptions: string[] = options.flatMap((option) => option.items);
-	let value: string | null | undefined = undefined;
+	let value: string = '';
 
 	const dispatch = createEventDispatcher<{
 		select: { value: string };
@@ -91,7 +91,9 @@
 						break;
 					case 'Enter':
 					case ' ':
-						selectOption(activeOption ?? '');
+						if (activeOption) {
+							selectOption(activeOption);
+						}
 						break;
 				}
 				break;
@@ -114,9 +116,9 @@
 		}
 	}
 
-	function handleClick(menuItem: string) {
-		activeOption = menuItem;
-		selectOption(menuItem);
+	function handleClick(option: string) {
+		activeOption = option;
+		selectOption(option);
 	}
 </script>
 
@@ -160,8 +162,6 @@
 <style>
 	.Listbox {
 		border: 1px solid black;
-		flex-direction: column;
-		width: max-content;
 		padding: 0;
 		margin: 0;
 		height: 300px;
@@ -177,7 +177,6 @@
 		padding: 8px 32px;
 		cursor: pointer;
 		user-select: none;
-		appearance: none;
 		background: transparent;
 		border: none;
 	}
@@ -188,16 +187,6 @@
 
 	.Listbox__option--selected {
 		background-color: orange;
-	}
-
-	.Listbox__option:focus-visible {
-		outline: 2px solid black;
-	}
-
-	.Listbox__option:empty {
-		height: 0;
-		opacity: 0;
-		pointer-events: none;
 	}
 
 	.Listbox__group {

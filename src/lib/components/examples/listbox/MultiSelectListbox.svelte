@@ -261,7 +261,7 @@
 		}
 	}
 
-	function handleClick(menuItem: string) {
+	function handleClick(option: string) {
 		if (!isShiftPressed) {
 			rangeSelectionIndexEnd = rangeSelectionIndexStart = null;
 		}
@@ -269,7 +269,7 @@
 		if (isCtrlPressed) {
 			if (isShiftPressed) {
 				rangeSelectionIndexStart = rangeSelectionIndexStart!;
-				const newActiveOptionIndex = options.indexOf(menuItem);
+				const newActiveOptionIndex = options.indexOf(option);
 				if (rangeSelectionIndexStart < newActiveOptionIndex) {
 					activeOptions = Array.from(
 						new Set(
@@ -290,17 +290,17 @@
 					);
 				}
 			} else {
-				if (activeOptions.includes(menuItem)) {
-					activeOptions = activeOptions.filter((item) => item !== menuItem);
+				if (activeOptions.includes(option)) {
+					activeOptions = activeOptions.filter((item) => item !== option);
 				} else {
-					activeOptions.push(menuItem);
+					activeOptions.push(option);
 					activeOptions = activeOptions;
 				}
 			}
 		} else {
 			if (isShiftPressed) {
 				rangeSelectionIndexStart = rangeSelectionIndexStart!;
-				const newActiveOptionIndex = options.indexOf(menuItem);
+				const newActiveOptionIndex = options.indexOf(option);
 				if (rangeSelectionIndexStart < newActiveOptionIndex) {
 					activeOptions = options.slice(rangeSelectionIndexStart, newActiveOptionIndex + 1);
 				} else {
@@ -309,7 +309,7 @@
 						.reverse();
 				}
 			} else {
-				activeOptions = [menuItem];
+				activeOptions = [option];
 			}
 		}
 	}
@@ -352,8 +352,6 @@
 	.Listbox {
 		list-style: none;
 		border: 1px solid black;
-		flex-direction: column;
-		width: max-content;
 		padding: 0;
 		margin: 0;
 		height: 300px;
@@ -369,7 +367,6 @@
 		padding: 8px 32px;
 		cursor: pointer;
 		user-select: none;
-		appearance: none;
 		background: transparent;
 		border: none;
 	}
@@ -388,15 +385,5 @@
 
 	.Listbox__option--selected {
 		background-color: orange;
-	}
-
-	.Listbox__option:focus-visible {
-		outline: 2px solid black;
-	}
-
-	.Listbox__option:empty {
-		height: 0;
-		opacity: 0;
-		pointer-events: none;
 	}
 </style>
