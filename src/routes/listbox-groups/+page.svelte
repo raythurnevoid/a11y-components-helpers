@@ -2,7 +2,7 @@
 	import ListboxWithGroups from '$lib/components/examples/listbox/ListboxWithGroups.svelte';
 
 	let selected: string = '';
-	function handleSelect(event: ListboxWithGroups['$$events_def']['select']) {
+	function handleSelect(event: ListboxWithGroups['$$events_def']['change']) {
 		selected = event.detail.value;
 	}
 </script>
@@ -11,4 +11,4 @@
 	Selected: {selected}
 </div>
 
-<ListboxWithGroups on:select={handleSelect} />
+<ListboxWithGroups on:change={handleSelect} />

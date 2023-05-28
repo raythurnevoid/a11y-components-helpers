@@ -2,7 +2,7 @@
 	import Listbox from '$lib/components/examples/listbox/Listbox.svelte';
 
 	let selected: string = '';
-	function handleSelect(event: Listbox['$$events_def']['select']) {
+	function handleSelect(event: Listbox['$$events_def']['change']) {
 		selected = event.detail.value;
 	}
 </script>
@@ -10,4 +10,4 @@
 <div>
 	Selected: {selected}
 </div>
-<Listbox on:select={handleSelect} />
+<Listbox on:change={handleSelect} />

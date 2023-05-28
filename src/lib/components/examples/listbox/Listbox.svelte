@@ -15,7 +15,7 @@
 	let value: string = '';
 
 	const dispatch = createEventDispatcher<{
-		select: { value: string };
+		change: { value: string };
 	}>();
 
 	let activeOption: string | null | undefined = undefined;
@@ -34,7 +34,7 @@
 
 	function selectOption(optionValue: string) {
 		value = optionValue;
-		dispatch('select', { value: optionValue });
+		dispatch('change', { value: optionValue });
 	}
 
 	function getOptionId(option: string) {
