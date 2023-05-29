@@ -1,13 +1,13 @@
 <script lang="ts">
 	import SliderRange from '$lib/components/examples/slider/SliderRange.svelte';
 
-	let selected: string = '';
-	function handleSelect(event: SliderRange['$$events_def']['change']) {
-		selected = event.detail.value;
+	let value: [number, number] = [30, 70];
+	function handleChange(event: SliderRange['$$events_def']['change']) {
+		value = event.detail.value;
 	}
 </script>
 
 <div>
-	Value: {selected}
+	Value: {value}
 </div>
-<SliderRange on:change={handleSelect} />
+<SliderRange on:change={handleChange} />

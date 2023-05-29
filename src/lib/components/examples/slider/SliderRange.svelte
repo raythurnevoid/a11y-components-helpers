@@ -1,11 +1,15 @@
 <script lang="ts">
-	let value1: number = 30;
-	let value2: number = 70;
+	import { createEventDispatcher } from 'svelte';
+
+	let value: [number, number] = [30, 70];
+
 	let step: number = 1;
 	let min: number = 0;
 	let max: number = 100;
-	$: value1Ratio = (value1 / (max - min)).toFixed(2);
-	$: value2Ratio = (value2 / (max - min)).toFixed(2);
+
+	const dispatch = createEventDispatcher<{
+		change: { value: [number, number] };
+	}>();
 
 	let el: HTMLElement;
 	let lastTouched: number | undefined = undefined;
@@ -13,43 +17,47 @@
 	function handleThumbFocus(id: number) {
 		lastTouched = id;
 	}
+
+	function getValueRatio(singleValue: number | undefined) {
+		return (singleValue! / (max - min)).toFixed(2);
+	}
+
+	function handleChange() {
+		dispatch('change', { value });
+	}
 </script>
 
-<div>
-	{value1}
-	{value2}
-	{(Number(value2Ratio) - Number(value1Ratio)).toFixed(2)}
-	{lastTouched}
-</div>
 <div
 	bind:this={el}
 	class="SliderRange"
 	style:--SliderRange--inline-size={'600px'}
 	style:--SliderRange--block-size={'40px'}
 	style:--SliderRange--thumb-size={'40px'}
-	style:--SliderRange--value1-ratio={value1Ratio}
-	style:--SliderRange--value2-ratio={value2Ratio}
+	style:--SliderRange--value1-ratio={getValueRatio(value.at(0))}
+	style:--SliderRange--value2-ratio={getValueRatio(value.at(1))}
 >
 	<input
 		class="SliderRange__slider"
 		class:SliderRange__slider--touched={lastTouched === 1}
-		bind:value={value1}
+		bind:value={value[0]}
 		type="range"
 		{min}
 		{max}
 		{step}
 		on:focus={() => handleThumbFocus(1)}
+		on:change={handleChange}
 	/>
 	<div class="SliderRange__thumb SliderRange__thumb1" />
 	<input
 		class="SliderRange__slider SliderRange__slider2"
 		class:SliderRange__slider--touched={lastTouched === 2}
-		bind:value={value2}
+		bind:value={value[1]}
 		type="range"
 		min="0"
 		max="100"
 		step="1"
 		on:focus={() => handleThumbFocus(2)}
+		on:change={handleChange}
 	/>
 	<div class="SliderRange__thumb SliderRange__thumb2" />
 	<div class="SliderRange__track">
@@ -105,6 +113,10 @@
 	.SliderRange__slider:hover,
 	.SliderRange__slider:hover + .SliderRange__thumb {
 		z-index: 3;
+	}
+
+	.SliderRange__slider:focus-visible + .SliderRange__thumb {
+		outline: black 2px solid;
 	}
 
 	.SliderRange__slider::-webkit-slider-runnable-track {
