@@ -13,12 +13,12 @@ export default defineConfig({
 	},
 	test: {
 		includeSource: ['src/**/*.{js,ts}'],
-		browser: {
-			enabled: true,
-			name: 'chromium',
-			provider: 'playwright',
-			headless: false
-		},
+		// browser: {
+		// 	enabled: true,
+		// 	name: 'chromium',
+		// 	provider: 'playwright',
+		// 	headless: false
+		// },
 		benchmark: {
 			includeSource: ['src/**/*.{js,ts}']
 		}
