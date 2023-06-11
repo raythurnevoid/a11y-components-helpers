@@ -30,6 +30,9 @@
 	let selectedCell: string = '';
 	let elementInViewChecker: ElementInViewChecker;
 
+	$: activeCellCoords = cellIndexMap.get(activeCell) ?? null;
+	$: selectedCellCoords = cellIndexMap.get(selectedCell) ?? null;
+
 	onMount(() => {
 		elementInViewChecker = new ElementInViewChecker(el);
 
@@ -56,7 +59,7 @@
 				break;
 		}
 
-		let [rowIndex, colIndex] = cellIndexMap.get(activeCell) ?? [-1, -1];
+		let [rowIndex, colIndex] = activeCellCoords ?? [-1, -1];
 
 		switch (event.key) {
 			case 'ArrowLeft':
@@ -129,18 +132,28 @@
 </script>
 
 <div {id}>
-	<table bind:this={el} class="Grid" role="grid" tabindex={0} on:keydown={handleKeyDown}>
+	<table
+		bind:this={el}
+		class="Grid"
+		role="grid"
+		tabindex={0}
+		aria-activedescendant={activeCellCoords
+			? getCellId(activeCellCoords[0], activeCellCoords[1])
+			: ''}
+		on:keydown={handleKeyDown}
+	>
 		{#each cells as row, rowIndex}
 			<tr>
 				{#each row as cell, colIndex}
 					<td
 						id={getCellId(rowIndex, colIndex)}
-						aria-rowindex={rowIndex + 1}
-						aria-colindex={colIndex + 1}
-						role="gridcell"
 						class="Grid__cell"
 						class:Grid__cell--active={cell === activeCell}
 						class:Grid__cell--selected={cell === selectedCell}
+						role="gridcell"
+						aria-rowindex={rowIndex + 1}
+						aria-colindex={colIndex + 1}
+						aria-selected={cell === selectedCell}
 					>
 						{cell}
 					</td>
