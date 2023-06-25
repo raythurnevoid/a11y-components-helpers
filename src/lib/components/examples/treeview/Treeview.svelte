@@ -84,10 +84,7 @@
 		getItemId
 	});
 
-	let pathStrItemMap = new Map<ItemPathStr, TreeviewItemI>();
-	let itemIndexMap = new Map<TreeviewItemI, number>();
 	let itemPathMap = new Map<TreeviewItemI, ItemPath>();
-	let itemPathStrMap = new Map<TreeviewItemI, ItemPathStr>();
 	let itemAncestryMap = new Map<TreeviewItemI, TreeviewItemI[]>();
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
 	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
@@ -98,13 +95,9 @@
 	) {
 		const flatItems = items.flatMap((item, i) => {
 			const itemPath = [...path, i];
-			const itemPathStr = itemPath.join('-');
 			const itemsAcc: TreeviewItemI[] = [item];
 
-			pathStrItemMap.set(itemPathStr, item);
-			itemIndexMap.set(item, i);
 			itemPathMap.set(item, itemPath);
-			itemPathStrMap.set(item, itemPathStr);
 			itemAncestryMap.set(item, ancestors);
 
 			if (item.subitems) {
@@ -129,7 +122,7 @@
 	let selectedItem: TreeviewItemI | null | undefined = undefined;
 
 	function getItemId(item: TreeviewItemI) {
-		return `Treeview__${itemPathStrMap.get(item)!}`;
+		return `Treeview__${itemPathMap.get(item)!.join('-')}`;
 	}
 
 	function openItem(itemToOpen: TreeviewItemI) {
