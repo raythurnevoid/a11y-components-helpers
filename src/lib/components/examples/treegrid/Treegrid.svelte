@@ -1,21 +1,22 @@
 <script lang="ts" context="module">
 	let count = 0;
 
-	type TreeGridRowsProp = TreeGridRowProp[];
+	type TreeGridRows = TreeGridRow[];
 
-	interface TreeGridRowProp {
+	interface TreeGridRow {
 		cells: Cell[];
-		rows?: TreeGridRowsProp;
+		rows?: TreeGridRows;
 	}
 
 	type Cell = string;
 
 	type RowPath = number[];
 	type RowPathStr = string;
-	type CellPathStr = `${string}_${number}`;
+	type CellIndex = number;
+	type CellPathStr = `${RowPathStr}_${CellIndex}`;
 	interface CellPath {
 		rowPath: RowPathStr;
-		cellIndex: number;
+		cellIndex: CellIndex;
 	}
 </script>
 
@@ -28,7 +29,7 @@
 	let el: HTMLElement;
 	let id: string = `Treegrid--${count++}`;
 
-	let rowsProp: TreeGridRowsProp = [
+	let rows: TreeGridRows = [
 		{
 			cells: ['A', 'B', 'C', 'D'],
 			rows: [
@@ -40,34 +41,35 @@
 		{ cells: ['E', 'F', 'G', 'H'] }
 	];
 
-	let pathRowMap = new Map<RowPathStr, TreeGridRowProp>();
-	let rowPathMap = new Map<TreeGridRowProp, RowPath>();
-	let rowPathStrMap = new Map<TreeGridRowProp, RowPathStr>();
+	let pathStrRowMap = new Map<RowPathStr, TreeGridRow>();
+	let rowPathMap = new Map<TreeGridRow, RowPath>();
+	let rowPathStrMap = new Map<TreeGridRow, RowPathStr>();
 	let pathCellMap = new Map<CellPathStr, Cell>();
 	let cellPathMap = new Map<Cell, CellPath>();
 	let cellPathStrMap = new Map<Cell, CellPathStr>();
-	let itemAncestryMap = new Map<Cell | TreeGridRowProp, TreeGridRowProp[]>();
-	const rows = (function flatAndMapRows(
-		toMap: TreeGridRowsProp,
+	let rowAncestryMap = new Map<Cell | TreeGridRow, TreeGridRow[]>();
+	const flatRows = (function flatAndMapRows(
+		toMap: TreeGridRows,
 		rootPath: RowPath = [],
-		ancestors: TreeGridRowProp[] = []
-	): TreeGridRowProp[] {
+		ancestors: TreeGridRow[] = []
+	): TreeGridRow[] {
 		const flatRowsValue = toMap.flatMap((row, index) => {
 			const ancestryIncludingSelf = [...ancestors, row];
 			const path: RowPath = [...rootPath, index];
 			const pathStr = path.join('-');
-			let rowsAcc: TreeGridRowProp[] = [row];
-			pathRowMap.set(pathStr, row);
+			const rowsAcc: TreeGridRow[] = [row];
+
+			pathStrRowMap.set(pathStr, row);
 			rowPathMap.set(row, path);
 			rowPathStrMap.set(row, pathStr);
-			itemAncestryMap.set(row, ancestors);
+			rowAncestryMap.set(row, ancestors);
 			row.cells.forEach((cell, cellIndex) => {
 				const cellPath: CellPath = { rowPath: pathStr, cellIndex };
 				const cellPathStr = `${pathStr}_${cellIndex}` as CellPathStr;
 				pathCellMap.set(cellPathStr, cell);
 				cellPathMap.set(cell, cellPath);
 				cellPathStrMap.set(cell, cellPathStr);
-				itemAncestryMap.set(cell, ancestryIncludingSelf);
+				rowAncestryMap.set(cell, ancestryIncludingSelf);
 			});
 			if (row.rows) {
 				rowsAcc.push(...flatAndMapRows(row.rows, path, ancestryIncludingSelf));
@@ -77,31 +79,31 @@
 		});
 
 		return flatRowsValue;
-	})(rowsProp);
+	})(rows);
 
-	let openRowsSet: Set<TreeGridRowProp> = new Set();
+	let openRowsSet: Set<TreeGridRow> = new Set();
 
-	$: showedRows = rows
+	$: showedRows = flatRows
 		.map((row) => {
 			const path = rowPathMap.get(row)!;
 			if (path.length === 1) {
 				return row;
-			} else if (itemAncestryMap.get(row)?.some((ancestor) => openRowsSet.has(ancestor))) {
+			} else if (rowAncestryMap.get(row)?.some((ancestor) => openRowsSet.has(ancestor))) {
 				return row;
 			} else {
 				return null;
 			}
 		})
-		.filter(Boolean) as TreeGridRowProp[];
+		.filter(Boolean) as TreeGridRow[];
 
-	let numRows = rows.length;
-	let numCols = Math.max(...rows.map((row) => row.cells.length));
+	let numRows = flatRows.length;
+	let numCols = Math.max(...flatRows.map((row) => row.cells.length));
 
-	let activeItemPath: string = rowPathStrMap.get(rows.at(0)!) ?? '';
+	let activeItemPath: string = rowPathStrMap.get(flatRows.at(0)!) ?? '';
 	let selectedCell: string = '';
 	let elementInViewChecker: ElementInViewChecker;
 
-	$: activeRow = pathRowMap.get(activeItemPath) ?? null;
+	$: activeRow = pathStrRowMap.get(activeItemPath) ?? null;
 	$: activeCell = pathCellMap.get(activeItemPath as CellPathStr) ?? null;
 	$: activeRowPath = activeRow ? rowPathMap.get(activeRow) : null;
 	$: activeCellPath = activeCell ? cellPathMap.get(activeCell) : null;
@@ -186,7 +188,7 @@
 							break;
 					}
 				} else if (activeCell && activeCellPath) {
-					const row = itemAncestryMap.get(activeCell)!.at(-1)!;
+					const row = rowAncestryMap.get(activeCell)!.at(-1)!;
 					const rowIndex = showedRows.indexOf(row);
 
 					switch (event.key) {
@@ -283,7 +285,7 @@
 >
 	{#each showedRows as row, rowIndex}
 		{@const rowPathStr = rowPathStrMap.get(row)}
-		{@const ancestors = itemAncestryMap.get(row)}
+		{@const ancestors = rowAncestryMap.get(row)}
 
 		{#if rowPathStr && ancestors}
 			<tr
