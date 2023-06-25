@@ -168,26 +168,20 @@
 		let itemToClose: TreeviewItemI | undefined = undefined;
 
 		switch (event.key) {
-			case 'ArrowRight':
 			case 'ArrowLeft':
-			case 'ArrowDown':
+			case 'ArrowRight':
 			case 'ArrowUp':
-			case 'Enter':
-			case ' ':
-			case 'Escape':
+			case 'ArrowDown':
 			case 'PageUp':
 			case 'PageDown':
 			case 'Home':
 			case 'End':
+			case 'Enter':
+			case ' ':
+			case 'Escape':
 				event.preventDefault();
 
 				switch (event.key) {
-					case 'Escape':
-						itemToActivate = null;
-						if (openItemsSet.size > 0) {
-							closeItems();
-						}
-						break;
 					case 'PageUp':
 						itemToActivate = (activeItemAncenstry?.at(-1)?.subitems ?? items)?.at(0) ?? null;
 						break;
@@ -248,6 +242,12 @@
 									itemToActivate = activeItemAncenstry.at(-1) ?? null;
 								}
 								break;
+						}
+						break;
+					case 'Escape':
+						itemToActivate = null;
+						if (openItemsSet.size > 0) {
+							closeItems();
 						}
 						break;
 				}
