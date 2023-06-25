@@ -111,7 +111,7 @@
 				break;
 			case 'Enter':
 			case ' ':
-				setSelectedCell(activeCell);
+				selectCell(activeCell);
 				break;
 		}
 
@@ -125,7 +125,7 @@
 		activeCell = newValue;
 	}
 
-	function setSelectedCell(newValue: string) {
+	function selectCell(newValue: string) {
 		selectedCell = newValue;
 		dispatch('change', { value: newValue });
 	}

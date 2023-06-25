@@ -175,10 +175,10 @@
 			case 'Enter':
 			case ' ':
 			case 'Escape':
-			case 'Home':
 			case 'PageUp':
-			case 'End':
 			case 'PageDown':
+			case 'Home':
+			case 'End':
 				event.preventDefault();
 
 				switch (event.key) {

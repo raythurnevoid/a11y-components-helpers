@@ -30,6 +30,7 @@
 	{id}
 	class="TreeviewItem"
 	class:TreeviewItem--active={treeViewItem === activeItem}
+	class:TreeviewItem--selected={treeViewItem === selectedItem}
 	role="treeitem"
 	aria-expanded={treeViewItem.subitems
 		? openItems.has(treeViewItem)
@@ -86,6 +87,18 @@
 
 	.TreeviewItem--active {
 		background: lightblue;
+	}
+
+	.TreeviewItem--selected {
+		background: orange;
+	}
+
+	.TreeviewItem--selected.TreeviewItem--active {
+		background: lightcoral;
+	}
+
+	.TreeviewItem--selected:hover {
+		background: orangered;
 	}
 
 	.TreeviewItem--active:hover {

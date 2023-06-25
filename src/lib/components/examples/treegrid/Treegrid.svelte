@@ -4,11 +4,11 @@
 	type TreeGridRows = TreeGridRow[];
 
 	interface TreeGridRow {
-		cells: Cell[];
+		cells: TreeGridCell[];
 		rows?: TreeGridRows;
 	}
 
-	type Cell = string;
+	type TreeGridCell = string;
 
 	type RowPath = number[];
 	type RowPathStr = string;
@@ -18,6 +18,14 @@
 		rowPath: RowPathStr;
 		cellIndex: CellIndex;
 	}
+
+	type TreeGridItem =
+		| {
+				row: TreeGridRow;
+		  }
+		| {
+				cell: TreeGridCell;
+		  };
 </script>
 
 <script lang="ts">
@@ -35,6 +43,9 @@
 			rows: [
 				{
 					cells: ['A1', 'B1', 'C1', 'D1']
+				},
+				{
+					cells: ['A2', 'B2', 'C2', 'D2']
 				}
 			]
 		},
@@ -44,10 +55,10 @@
 	let pathStrRowMap = new Map<RowPathStr, TreeGridRow>();
 	let rowPathMap = new Map<TreeGridRow, RowPath>();
 	let rowPathStrMap = new Map<TreeGridRow, RowPathStr>();
-	let pathCellMap = new Map<CellPathStr, Cell>();
-	let cellPathMap = new Map<Cell, CellPath>();
-	let cellPathStrMap = new Map<Cell, CellPathStr>();
-	let rowAncestryMap = new Map<Cell | TreeGridRow, TreeGridRow[]>();
+	let pathCellMap = new Map<CellPathStr, TreeGridCell>();
+	let cellPathMap = new Map<TreeGridCell, CellPath>();
+	let cellPathStrMap = new Map<TreeGridCell, CellPathStr>();
+	let itemAncestryMap = new Map<TreeGridCell | TreeGridRow, TreeGridRow[]>();
 	const flatRows = (function flatAndMapRows(
 		toMap: TreeGridRows,
 		rootPath: RowPath = [],
@@ -62,14 +73,14 @@
 			pathStrRowMap.set(pathStr, row);
 			rowPathMap.set(row, path);
 			rowPathStrMap.set(row, pathStr);
-			rowAncestryMap.set(row, ancestors);
+			itemAncestryMap.set(row, ancestors);
 			row.cells.forEach((cell, cellIndex) => {
 				const cellPath: CellPath = { rowPath: pathStr, cellIndex };
 				const cellPathStr = `${pathStr}_${cellIndex}` as CellPathStr;
 				pathCellMap.set(cellPathStr, cell);
 				cellPathMap.set(cell, cellPath);
 				cellPathStrMap.set(cell, cellPathStr);
-				rowAncestryMap.set(cell, ancestryIncludingSelf);
+				itemAncestryMap.set(cell, ancestryIncludingSelf);
 			});
 			if (row.rows) {
 				rowsAcc.push(...flatAndMapRows(row.rows, path, ancestryIncludingSelf));
@@ -83,32 +94,20 @@
 
 	let openRowsSet: Set<TreeGridRow> = new Set();
 
-	$: showedRows = flatRows
-		.map((row) => {
-			const path = rowPathMap.get(row)!;
-			if (path.length === 1) {
-				return row;
-			} else if (rowAncestryMap.get(row)?.some((ancestor) => openRowsSet.has(ancestor))) {
-				return row;
-			} else {
-				return null;
-			}
-		})
-		.filter(Boolean) as TreeGridRow[];
+	$: showedRows = flatRows.filter((row) => {
+		return (
+			rowPathMap.get(row)!.length === 1 ||
+			itemAncestryMap.get(row)?.every((ancestor) => openRowsSet.has(ancestor))
+		);
+	});
 
-	let numRows = flatRows.length;
+	$: numRows = showedRows.length;
 	let numCols = Math.max(...flatRows.map((row) => row.cells.length));
 
-	let activeItemPath: string = rowPathStrMap.get(flatRows.at(0)!) ?? '';
+	let activeItemPath: string = '';
 	let selectedCell: string = '';
 	let elementInViewChecker: ElementInViewChecker;
-
-	$: activeRow = pathStrRowMap.get(activeItemPath) ?? null;
-	$: activeCell = pathCellMap.get(activeItemPath as CellPathStr) ?? null;
-	$: activeRowPath = activeRow ? rowPathMap.get(activeRow) : null;
-	$: activeCellPath = activeCell ? cellPathMap.get(activeCell) : null;
-	$: activeRowPathStr = activeRow ? rowPathStrMap.get(activeRow) : null;
-	$: activeCellPathStr = activeCell ? cellPathStrMap.get(activeCell) : null;
+	let activeItem: TreeGridItem | null | undefined = undefined;
 
 	onMount(() => {
 		elementInViewChecker = new ElementInViewChecker(el);
@@ -118,134 +117,259 @@
 		};
 	});
 
+	function openRow(row: TreeGridRow) {
+		openRowsSet.add(row);
+		openRowsSet = openRowsSet;
+	}
+
+	function closeRow(row: TreeGridRow) {
+		openRowsSet.delete(row);
+		openRowsSet = openRowsSet;
+	}
+
+	function closeRows() {
+		openRowsSet.clear();
+		openRowsSet = openRowsSet;
+	}
+
+	function selectCell(newValue: string) {
+		selectedCell = newValue;
+		dispatch('change', { value: newValue });
+	}
+
+	function getCellId(cell: TreeGridCell) {
+		return `${id}-cell--${cellPathStrMap.get(cell)}`;
+	}
+
+	function getRowId(row: TreeGridRow) {
+		return `${id}-row--${rowPathStrMap.get(row)}`;
+	}
+
+	function getItemId(item: TreeGridItem) {
+		if ('row' in item) return getRowId(item.row);
+		else if ('cell' in item) return getCellId(item.cell);
+	}
+
+	function getRowFromItem(item: TreeGridItem) {
+		if ('row' in item) return item.row;
+	}
+
+	function getCellFromItem(item: TreeGridItem) {
+		if ('cell' in item) return item.cell;
+	}
+
+	function getParent(rowOrCell: TreeGridRow | TreeGridCell) {
+		return itemAncestryMap.get(rowOrCell)?.at(-1);
+	}
+
+	function getNextRowToActivate(activeRow: TreeGridRow, direction: 'prev' | 'next') {
+		const activeRowIndex = showedRows.indexOf(activeRow);
+		const towToActivateIndex =
+			direction === 'next'
+				? activeRowIndex < numRows - 1
+					? activeRowIndex + 1
+					: 0
+				: activeRowIndex - 1;
+		const rowToActivate = showedRows.at(towToActivateIndex);
+		return rowToActivate;
+	}
+
+	function getNextCellToActivate(
+		activeCell: TreeGridCell,
+		direction: 'prev' | 'next' | 'up' | 'down'
+	) {
+		let cellToActivate: TreeGridCell | undefined = undefined;
+
+		const activeCellRow = getParent(activeCell)!;
+		const activeCellIndex = activeCellRow.cells.indexOf(activeCell);
+
+		if (direction === 'prev' || direction === 'next') {
+			const cellToActivateIndex =
+				direction === 'next'
+					? activeCellIndex < numCols - 1
+						? activeCellIndex + 1
+						: 0
+					: activeCellIndex - 1;
+			cellToActivate = activeCellRow.cells.at(cellToActivateIndex);
+		} else {
+			const activeCellRowIndex = showedRows.indexOf(activeCellRow);
+			const cellRowIndexToActivate =
+				direction === 'down'
+					? activeCellRowIndex < numRows - 1
+						? activeCellRowIndex + 1
+						: 0
+					: activeCellRowIndex - 1;
+			const cellRowToActivate = showedRows.at(cellRowIndexToActivate);
+			cellToActivate = cellRowToActivate?.cells.at(activeCellIndex)!;
+		}
+
+		return cellToActivate;
+	}
+
 	async function handleKeyDown(event: KeyboardEvent) {
 		switch (event.key) {
 			case 'ArrowLeft':
 			case 'ArrowRight':
 			case 'ArrowUp':
 			case 'ArrowDown':
+			case 'PageUp':
+			case 'PageDown':
 			case 'Home':
 			case 'End':
 			case 'Enter':
 			case ' ':
+			case 'Escape':
 				event.preventDefault();
 
 				let activeEl: HTMLElement | undefined | null = undefined;
 
-				if (activeRow && activeRowPath) {
-					const rowIndex = showedRows.indexOf(activeRow);
+				let rowToActivate: TreeGridRow | undefined = undefined;
+				let cellToActivate: TreeGridCell | undefined = undefined;
+				let itemToActivate: TreeGridItem | null | undefined = undefined;
+				let rowToOpen: TreeGridRow | undefined = undefined;
+				let rowToClose: TreeGridRow | undefined = undefined;
 
-					switch (event.key) {
-						case 'ArrowLeft':
-						case 'ArrowRight':
-						case 'ArrowUp':
-						case 'ArrowDown':
-						case 'Home':
-						case 'End':
-							let rowIndexToActivate = rowIndex;
+				switch (event.key) {
+					case 'ArrowLeft':
+					case 'ArrowRight':
+					case 'ArrowUp':
+					case 'ArrowDown':
+					case 'PageUp':
+					case 'PageDown':
+					case 'Home':
+					case 'End':
+						const activeCell = activeItem ? getCellFromItem(activeItem) : undefined;
+						const activeCellRow = activeCell ? getParent(activeCell) : undefined;
+						const activeRow = activeItem ? getRowFromItem(activeItem) : undefined;
 
-							switch (event.key) {
-								case 'ArrowLeft':
+						switch (event.key) {
+							case 'ArrowLeft':
+								if (activeRow) {
 									if (activeRow.rows && openRowsSet.has(activeRow)) {
-										openRowsSet.delete(activeRow);
-										openRowsSet = openRowsSet;
+										rowToClose = activeRow;
+									} else {
+										rowToActivate = getParent(activeRow);
 									}
-
-									break;
-								case 'ArrowRight':
+								} else if (activeCell && activeCellRow) {
+									const activeCellIndex = activeCellRow.cells.indexOf(activeCell);
+									if (activeCellIndex > 0) {
+										cellToActivate = getNextCellToActivate(activeCell, 'prev');
+									} else {
+										rowToActivate = activeCellRow;
+									}
+								} else {
+									rowToActivate = showedRows.at(0);
+								}
+								break;
+							case 'ArrowRight':
+								if (activeRow) {
 									if (activeRow.rows && !openRowsSet.has(activeRow)) {
-										openRowsSet.add(activeRow);
-										openRowsSet = openRowsSet;
+										rowToOpen = activeRow;
 									} else {
-										activeItemPath = cellPathStrMap.get(activeRow.cells.at(0)!)!;
+										cellToActivate = activeRow.cells.at(0);
 									}
+								} else if (activeCell) {
+									cellToActivate = getNextCellToActivate(activeCell, 'next');
+								} else {
+									rowToActivate = showedRows.at(0);
+								}
+								break;
+							case 'ArrowUp':
+								if (activeRow) {
+									rowToActivate = getNextRowToActivate(activeRow, 'prev');
+								} else if (activeCell) {
+									cellToActivate = getNextCellToActivate(activeCell, 'up');
+								} else {
+									rowToActivate = showedRows.at(-1);
+								}
+								break;
+							case 'ArrowDown':
+								if (activeRow) {
+									rowToActivate = getNextRowToActivate(activeRow, 'next');
+								} else if (activeCell) {
+									cellToActivate = getNextCellToActivate(activeCell, 'down');
+								} else {
+									rowToActivate = showedRows.at(0);
+								}
+								break;
+							case 'PageUp':
+								if (activeRow) {
+									rowToActivate = (getParent(activeRow)?.rows ?? rows)?.at(0);
+								} else if (activeCell && activeCellRow) {
+									cellToActivate = activeCellRow.cells.at(0);
+								} else {
+									rowToActivate = showedRows.at(0);
+								}
+								break;
+							case 'PageDown':
+								if (activeRow) {
+									rowToActivate = (getParent(activeRow)?.rows ?? rows)?.at(-1);
+								} else if (activeCell && activeCellRow) {
+									cellToActivate = activeCellRow.cells.at(-1);
+								} else {
+									rowToActivate = showedRows.at(-1);
+								}
 
-									break;
-								case 'ArrowUp':
-									if (rowIndex > 0) {
-										rowIndexToActivate--;
-										activeItemPath = rowPathStrMap.get(showedRows.at(rowIndexToActivate)!)!;
-									}
-									break;
-								case 'ArrowDown':
-									if (rowIndex < numRows) {
-										rowIndexToActivate++;
-										activeItemPath = rowPathStrMap.get(showedRows.at(rowIndexToActivate)!)!;
-									}
-									break;
-								case 'Home':
-									activeItemPath = rowPathStrMap.get(showedRows.at(0)!)!;
-									break;
-								case 'End':
-									activeItemPath = rowPathStrMap.get(showedRows.at(-1)!)!;
-									break;
-							}
+								break;
 
-							break;
-						case 'Enter':
-						case ' ':
-							setSelectedCell(activeItemPath);
-							break;
-					}
-				} else if (activeCell && activeCellPath) {
-					const row = rowAncestryMap.get(activeCell)!.at(-1)!;
-					const rowIndex = showedRows.indexOf(row);
+							case 'Home':
+								if (activeCell && activeCellRow) {
+									cellToActivate = activeCellRow.cells.at(0);
+								} else {
+									rowToActivate = showedRows.at(0);
+								}
+								break;
 
-					switch (event.key) {
-						case 'ArrowLeft':
-						case 'ArrowRight':
-						case 'ArrowUp':
-						case 'ArrowDown':
-						case 'Home':
-						case 'End':
-							let cellIndexToActivate = activeCellPath.cellIndex;
-							let cellRowIndexToActivate = rowIndex;
+							case 'End':
+								if (activeCell && activeCellRow) {
+									cellToActivate = activeCellRow.cells.at(-1);
+								} else {
+									rowToActivate = showedRows.at(-1);
+								}
+								break;
+						}
 
-							switch (event.key) {
-								case 'ArrowLeft':
-									cellIndexToActivate--;
-									if (cellIndexToActivate < 0) {
-										activeItemPath = activeCellPath.rowPath;
-									} else {
-										activeItemPath = cellPathStrMap.get(row.cells.at(cellIndexToActivate)!)!;
-									}
-									break;
-								case 'ArrowRight':
-									if (cellIndexToActivate < numCols - 1) {
-										cellIndexToActivate++;
-										activeItemPath = cellPathStrMap.get(row.cells.at(cellIndexToActivate)!)!;
-									}
-									break;
-								case 'ArrowUp':
-									if (rowIndex > 0) {
-										cellRowIndexToActivate--;
-										const cellRow = showedRows.at(cellRowIndexToActivate)!;
-										activeItemPath = cellPathStrMap.get(cellRow.cells.at(cellIndexToActivate)!)!;
-									}
-									break;
-								case 'ArrowDown':
-									if (rowIndex < numRows) {
-										cellRowIndexToActivate++;
-										const cellRow = showedRows.at(cellRowIndexToActivate)!;
-										activeItemPath = cellPathStrMap.get(cellRow.cells.at(cellIndexToActivate)!)!;
-									}
-									break;
-								case 'Home':
-									cellIndexToActivate = 0;
-									break;
-								case 'End':
-									cellIndexToActivate = numCols - 1;
-									break;
-							}
+						break;
+					case 'Enter':
+					case ' ':
+						selectCell(activeItemPath);
+						break;
+					case 'Escape':
+						if (activeItem) {
+							itemToActivate = null;
+						} else {
+							closeRows();
+						}
+						break;
+				}
 
-							break;
-						case 'Enter':
-						case ' ':
-							setSelectedCell(activeItemPath);
-							break;
-					}
+				if (rowToActivate !== undefined) {
+					itemToActivate = {
+						row: rowToActivate
+					};
+				}
 
-					activeEl = document.getElementById(getCellId(activeItemPath as CellPathStr));
+				if (cellToActivate !== undefined) {
+					itemToActivate = {
+						cell: cellToActivate
+					};
+				}
+
+				if (itemToActivate !== undefined) {
+					activeItem = itemToActivate;
+				}
+
+				if (rowToOpen) {
+					openRow(rowToOpen);
+				}
+
+				if (rowToClose) {
+					closeRow(rowToClose);
+				}
+
+				if (activeItem) {
+					const id = getItemId(activeItem);
+					activeEl = id ? document.getElementById(id) : undefined;
 				}
 
 				if (activeEl && !(await elementInViewChecker.check(activeEl))) {
@@ -255,17 +379,29 @@
 		}
 	}
 
-	function setSelectedCell(newValue: string) {
-		selectedCell = newValue;
-		dispatch('change', { value: newValue });
+	let dblClickTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+	function handleClick(clickedCell: TreeGridCell) {
+		const activeRow = activeItem ? getRowFromItem(activeItem) : undefined;
+		const activeCell = activeItem ? getCellFromItem(activeItem) : undefined;
+		const cellRow = getParent(clickedCell)!;
+
+		dblClickTimeout = setTimeout(() => {
+			const activeCellRow = activeCell ? getParent(activeCell) : undefined;
+			activeItem = {
+				row: cellRow
+			};
+		});
 	}
 
-	function getCellId(cellPath: CellPathStr) {
-		return `${id}-cell--${cellPath}`;
-	}
+	function handleDblClick(clickedCell: TreeGridCell) {
+		clearTimeout(dblClickTimeout);
+		const cellRow = getParent(clickedCell)!;
 
-	function getRowId(rowPath: RowPathStr) {
-		return `${id}-row--${rowPath}`;
+		if (openRowsSet.has(cellRow)) {
+			closeRow(cellRow);
+		} else {
+			openRow(cellRow);
+		}
 	}
 </script>
 
@@ -276,39 +412,36 @@
 	class="Treegrid"
 	role="treegrid"
 	tabindex={0}
-	aria-activedescendant={activeRowPathStr
-		? getRowId(activeRowPathStr)
-		: activeCellPathStr
-		? getCellId(activeCellPathStr)
-		: ''}
+	aria-activedescendant={activeItem ? getItemId(activeItem) : ''}
 	on:keydown={handleKeyDown}
 >
 	{#each showedRows as row, rowIndex}
-		{@const rowPathStr = rowPathStrMap.get(row)}
-		{@const ancestors = rowAncestryMap.get(row)}
+		{@const ancestors = itemAncestryMap.get(row)}
 
-		{#if rowPathStr && ancestors}
+		{#if ancestors}
+			{@const activeRow = activeItem ? getRowFromItem(activeItem) : undefined}
 			<tr
-				id={getRowId(rowPathStr)}
-				class:Treegrid__row--active={row === activeRow}
+				id={getRowId(row)}
+				class="Treegrid__row"
+				class:Treegrid__row--active={activeRow && row === activeRow}
 				aria-level={ancestors.length + 1}
 				aria-expanded={row.rows ? openRowsSet.has(row) : undefined}
 			>
 				{#each row.cells as cell, colIndex}
-					{@const cellPathStr = cellPathStrMap.get(cell)}
-
-					{#if cellPathStr}
-						<td
-							id={getCellId(cellPathStr)}
-							class="Treegrid__cell"
-							class:Treegrid__cell--active={cell === activeCell}
-							role="gridcell"
-							aria-rowindex={rowIndex + 1}
-							aria-colindex={colIndex + 1}
-						>
-							{cell}
-						</td>
-					{/if}
+					<td
+						id={getCellId(cell)}
+						class="Treegrid__cell"
+						class:Treegrid__cell--active={activeItem &&
+							'cell' in activeItem &&
+							cell === activeItem.cell}
+						role="gridcell"
+						aria-rowindex={rowIndex + 1}
+						aria-colindex={colIndex + 1}
+						on:click={() => handleClick(cell)}
+						on:dblclick={() => handleDblClick(cell)}
+					>
+						{cell}
+					</td>
 				{/each}
 			</tr>
 		{/if}
@@ -329,17 +462,26 @@
 		border: 1px solid black;
 		padding: 8px;
 		text-align: center;
+		cursor: pointer;
 	}
 
 	.Treegrid__cell--active {
 		background-color: lightcoral;
 	}
 
+	.Treegrid__row:not(.Treegrid__row--active):hover {
+		background-color: lightgray;
+	}
+
+	.Treegrid__row:hover .Treegrid__cell--active {
+		background-color: orange;
+	}
+
 	.Treegrid__row--active {
 		background-color: lightcoral;
 	}
 
-	.Treegrid__cell--selected {
+	.Treegrid__row--active:hover {
 		background-color: orange;
 	}
 </style>
