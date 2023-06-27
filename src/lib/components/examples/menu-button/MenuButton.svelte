@@ -1,37 +1,42 @@
 <script lang="ts" context="module">
-	let index: number = 0;
+	let count: number = 0;
 </script>
 
 <script lang="ts">
 	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
-	import { createEventDispatcher, tick } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 
 	let el: HTMLElement;
-	let id: string = `MenuButton--${index++}`;
-	const menuId = `"${id}__menu"`;
-
-	let menuItems: string[] = ['A', 'B', 'C'];
-
-	let open: boolean = false;
-	let activeItem: string | null | undefined = undefined;
-	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
+	let id: string = `MenuButton--${count++}`;
 
 	const dispatch = createEventDispatcher<{
 		select: { value: string };
 	}>();
 
-	function focusActiveItem() {
-		(el.querySelector('[tabindex="0"]') as HTMLElement)?.focus();
-	}
+	let buttonEl: HTMLButtonElement;
+	let menuEl: HTMLMenuElement;
+	const menuId = `"${id}__menu"`;
+	let menuItems: string[] = ['A', 'B', 'C'];
+	let open: boolean = false;
+
+	let activeMenuItem: string | null | undefined = undefined;
+	const printableCharRegex = /^[a-zA-Z0-9]$/;
+	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
+
+	onMount(() => {
+		handleDomChange();
+	});
 
 	function openMenu() {
 		open = true;
+		tick().then(() => {
+			menuEl.focus();
+		});
 	}
 
 	function closeMenu() {
 		open = false;
-		activeItem = null;
+		activeMenuItem = null;
 	}
 
 	function selectItem(value: string) {
@@ -39,33 +44,46 @@
 		closeMenu();
 	}
 
-	async function handleClick() {
+	function findMenuItemId(value: string) {
+		console.log('findMenuItemId', value, menuEl.querySelector(`[data-value="${value}"]`)?.id);
+		return menuEl.querySelector(`[data-value="${value}"]`)?.id;
+	}
+
+	function handleDomChange() {
+		menuItems = Array.from(menuEl.querySelectorAll('[role="menuitem"]')).map((el) => el.id);
+	}
+
+	function handleButtonClick() {
 		if (open) {
 			closeMenu();
 		} else {
 			openMenu();
-			activeItem = menuItems.at(0) ?? null;
+			activeMenuItem = menuItems.at(0) ?? null;
 		}
-
-		await tick();
-		focusActiveItem();
 	}
 
-	async function handleKeyDown(event: KeyboardEvent) {
+	function handleMenuItemClick(menuItem: string) {
+		selectItem(menuItem);
+		buttonEl.focus();
+	}
+
+	function handleKeyDown(event: KeyboardEvent) {
 		switch (event.key) {
 			case 'ArrowDown':
 			case 'ArrowUp':
 			case 'Enter':
 			case ' ':
 			case 'Escape':
+			case 'Tab':
 			case 'Home':
 			case 'PageUp':
 			case 'End':
 			case 'PageDown':
-				event.preventDefault();
+				if (event.key !== 'Tab') event.preventDefault();
 
 				switch (event.key) {
 					case 'Escape':
+					case 'Tab':
 						closeMenu();
 						break;
 					default:
@@ -83,38 +101,40 @@
 								case 'Enter':
 								case ' ':
 								case 'ArrowDown':
-									activeItem = menuItems.at(0) ?? null;
+									activeMenuItem = menuItems.at(0) ?? null;
 									break;
 								case 'ArrowUp':
-									activeItem = menuItems.at(-1) ?? null;
+									activeMenuItem = menuItems.at(-1) ?? null;
 									break;
 							}
 						} else {
 							switch (event.key) {
 								case 'Home':
 								case 'PageUp':
-									activeItem = menuItems.at(0) ?? null;
+									activeMenuItem = menuItems.at(0) ?? null;
 									break;
 								case 'End':
 								case 'PageDown':
-									activeItem = menuItems.at(-1) ?? null;
+									activeMenuItem = menuItems.at(-1) ?? null;
 									break;
-								case 'ArrowDown':
-								case 'ArrowUp':
-									const activeItemIndex = menuItems.indexOf(activeItem!);
-									switch (event.key) {
-										case 'ArrowDown':
-											activeItem = menuItems.at(activeItemIndex + 1) ?? menuItems.at(0) ?? null;
-											null;
-											break;
-										case 'ArrowUp':
-											activeItem = menuItems.at(activeItemIndex - 1) ?? null;
-											break;
-									}
+
+								case 'ArrowDown': {
+									const activeItemIndex = menuItems.indexOf(activeMenuItem!);
+									activeMenuItem = menuItems.at(activeItemIndex + 1) ?? menuItems.at(0) ?? null;
+									null;
 									break;
+								}
+								case 'ArrowUp': {
+									const activeItemIndex = menuItems.indexOf(activeMenuItem!);
+									activeMenuItem = menuItems.at(activeItemIndex - 1) ?? null;
+									break;
+								}
 								case 'Enter':
 								case ' ':
-									if (activeItem) selectItem(activeItem);
+									if (activeMenuItem) {
+										selectItem(activeMenuItem);
+										buttonEl.focus();
+									}
 									break;
 							}
 						}
@@ -124,16 +144,13 @@
 			default:
 				if (event.key.match(printableCharRegex)) {
 					temporaryFilter.addChar(event.key);
-					activeItem =
+					activeMenuItem =
 						menuItems.find((item) =>
 							item.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase())
-						) ?? activeItem;
+						) ?? activeMenuItem;
 				}
 				break;
 		}
-
-		await tick();
-		focusActiveItem();
 	}
 
 	function handleFocusOut(event: FocusEvent) {
@@ -144,19 +161,16 @@
 		closeMenu();
 	}
 
-	async function handlePointerOver(menuItem: string) {
-		activeItem = menuItem;
-
-		await tick();
-		focusActiveItem();
+	function handlePointerOver(menuItem: string) {
+		activeMenuItem = menuItem;
 	}
 </script>
 
-<div bind:this={el} class="MenuButton" on:focusout={handleFocusOut} on:keydown={handleKeyDown}>
+<div {id} bind:this={el} class="MenuButton" on:keydown={handleKeyDown} on:focusout={handleFocusOut}>
 	<button
-		{id}
+		bind:this={buttonEl}
 		class="MenuButton__button"
-		on:click={handleClick}
+		on:click={handleButtonClick}
 		aria-haspopup="menu"
 		aria-expanded={open}
 		aria-controls={menuId}
@@ -166,24 +180,28 @@
 	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
 	<!-- svelte-ignore a11y-no-redundant-roles -->
 	<menu
+		bind:this={menuEl}
 		id={menuId}
 		class="MenuButton__menu"
 		class:Menu--open={open}
+		tabindex="-1"
 		role="menu"
 		aria-labelledby={id}
+		aria-activedescendant={activeMenuItem ? findMenuItemId(activeMenuItem) ?? '' : ''}
 	>
 		{#each menuItems as menuItem}
-			<!-- svelte-ignore a11y-click-events-have-key-events -->
-			<li class="MenuButton__li" role="presentation">
-				<button
-					class="MenuButton__menuitem"
-					role="menuitem"
-					tabindex={menuItem === activeItem ? 0 : -1}
-					on:click={() => selectItem(menuItem)}
-					on:pointerover={() => handlePointerOver(menuItem)}
-				>
-					{menuItem}
-				</button>
+			<!--svelte-ignore a11y-click-events-have-key-events -->
+			<li
+				id="{id}__menu-item--{menuItem}"
+				class="MenuButton__menuitem"
+				class:MenuButton__menuitem--active={menuItem === activeMenuItem}
+				data-value={menuItem}
+				role="menuitem"
+				tabindex="-1"
+				on:click={() => handleMenuItemClick(menuItem)}
+				on:pointerover={() => handlePointerOver(menuItem)}
+			>
+				{menuItem}
 			</li>
 		{/each}
 	</menu>
@@ -198,7 +216,7 @@
 		cursor: pointer;
 	}
 
-	.MenuButton__button:focus-within {
+	.MenuButton__button:focus-visible {
 		outline: 2px solid black;
 	}
 
@@ -207,15 +225,14 @@
 		position: absolute;
 		list-style: none;
 		border: 1px solid black;
-		flex-direction: column;
 		width: max-content;
 		padding: 16px 0;
 		margin: 0;
 		background-color: lightyellow;
 	}
 
-	.MenuButton__li {
-		padding: 0;
+	.MenuButton__menu:focus-visible {
+		outline: 2px solid black;
 	}
 
 	.Menu--open {
@@ -229,13 +246,10 @@
 		appearance: none;
 		background: transparent;
 		border: none;
+		padding: 0 16px;
 	}
 
-	.MenuButton__menuitem:focus {
+	.MenuButton__menuitem--active {
 		background-color: lightgray;
-	}
-
-	.MenuButton__menuitem:focus-visible {
-		outline: 2px solid black;
 	}
 </style>

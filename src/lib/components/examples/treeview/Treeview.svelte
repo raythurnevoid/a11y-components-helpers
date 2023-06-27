@@ -135,11 +135,19 @@
 		openItemsSet = openItemsSet;
 	}
 
-	function getNextItemToActivate(currentItem: TreeviewItemI, direction: 'next' | 'prev') {
+	function getNextItemToActivate(
+		currentItem: TreeviewItemI | null | undefined,
+		direction: 'next' | 'prev'
+	) {
+		if (!showedItems.length) return null;
+
+		if (!currentItem) {
+			return direction === 'next' ? showedItems.at(0) : showedItems.at(-1);
+		}
+
 		const currentItemIndex = showedItems.indexOf(currentItem)!;
 		const itemToActivateIndex = direction === 'next' ? currentItemIndex + 1 : currentItemIndex - 1;
-		const itemToActivate =
-			itemToActivateIndex >= 0 ? showedItems?.at(itemToActivateIndex) ?? null : null;
+		const itemToActivate = showedItems.at(itemToActivateIndex) ?? showedItems.at(0)!;
 
 		return itemToActivate;
 	}
@@ -197,18 +205,10 @@
 					default:
 						switch (event.key) {
 							case 'ArrowDown':
-								if (!activeItem) {
-									itemToActivate = showedItems.at(0)!;
-								} else {
-									itemToActivate = getNextItemToActivate(activeItem, 'next');
-								}
+								itemToActivate = getNextItemToActivate(activeItem, 'next');
 								break;
 							case 'ArrowUp':
-								if (!activeItem) {
-									itemToActivate = showedItems.at(-1)!;
-								} else {
-									itemToActivate = getNextItemToActivate(activeItem, 'prev');
-								}
+								itemToActivate = getNextItemToActivate(activeItem, 'prev');
 								break;
 							case 'Enter':
 							case ' ':
@@ -245,8 +245,10 @@
 						}
 						break;
 					case 'Escape':
-						itemToActivate = null;
-						if (openItemsSet.size > 0) {
+						if (activeItem || selectedItem) {
+							itemToActivate = null;
+							itemToSelect = null;
+						} else {
 							closeItems();
 						}
 						break;

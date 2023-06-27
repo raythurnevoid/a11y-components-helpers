@@ -381,12 +381,9 @@
 
 	let dblClickTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 	function handleClick(clickedCell: TreeGridCell) {
-		const activeRow = activeItem ? getRowFromItem(activeItem) : undefined;
-		const activeCell = activeItem ? getCellFromItem(activeItem) : undefined;
 		const cellRow = getParent(clickedCell)!;
 
 		dblClickTimeout = setTimeout(() => {
-			const activeCellRow = activeCell ? getParent(activeCell) : undefined;
 			activeItem = {
 				row: cellRow
 			};
