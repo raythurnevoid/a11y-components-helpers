@@ -5,7 +5,7 @@
 </script>
 
 <main>
-	<Autocomplete bind:state label="State" autocomplete="inline" />
+	<Autocomplete bind:state label="State" autocomplete="both" />
 
 	<aside id="state">
 		<pre><code>{JSON.stringify(state, null, 2)}</code></pre>

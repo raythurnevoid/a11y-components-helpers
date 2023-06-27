@@ -19,7 +19,6 @@
 	export let state = autocompleteHelpers.setState({
 		autocomplete,
 		isListboxOpen: false,
-		elementWithFocus: null,
 		activeOption: null
 	});
 
@@ -290,13 +289,6 @@
 		});
 	}
 
-	async function handleComboboxFocus() {
-		await autocompleteHelpers.handleComboboxFocus({
-			state,
-			hooks
-		});
-	}
-
 	async function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
@@ -347,7 +339,7 @@
 	<label class="Autocomplete__input-container">
 		<span>{label}</span>
 
-		<div {id} class="Autocomplete__input-group" class:focus={state.elementWithFocus === 'combobox'}>
+		<div {id} class="Autocomplete__input-group">
 			<input
 				bind:this={comboboxEl}
 				id={inputId}
@@ -364,7 +356,6 @@
 				on:input={handleComboboxInput}
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleComboboxClick}
-				on:focus={handleComboboxFocus}
 				on:change={handleChange}
 			/>
 
@@ -400,7 +391,6 @@
 		bind:this={listboxEl}
 		id={listboxId}
 		class="Autocomplete__listbox"
-		class:Autocomplete__listbox--focus={state.elementWithFocus === 'listbox'}
 		class:Autocomplete__listbox--open={state.isListboxOpen}
 		role="listbox"
 		aria-label={label}
@@ -453,7 +443,7 @@
 		overflow-x: hidden;
 	}
 
-	.Autocomplete__listbox--focus {
+	.Autocomplete__listbox:focus-within {
 		border: blue solid 1px;
 	}
 

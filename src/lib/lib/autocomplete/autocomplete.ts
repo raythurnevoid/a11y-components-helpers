@@ -30,14 +30,6 @@ export async function handleComboboxInput(input: {
 	state = await collectStateUpdates(
 		state,
 		async (updateState) => {
-			if (state.elementWithFocus !== 'combobox') {
-				await updateState({
-					state: {
-						elementWithFocus: 'combobox'
-					}
-				});
-			}
-
 			let listboxCanOpen = await input.hooks.checkIfListboxCanOpen({
 				reason
 			});
@@ -125,8 +117,6 @@ export async function handleComboboxKeyDown(input: {
 }): Promise<void> {
 	let state = input.state;
 
-	let shouldPreventDefault = false;
-
 	if (input.event.ctrlKey) {
 		return;
 	}
@@ -134,6 +124,8 @@ export async function handleComboboxKeyDown(input: {
 	if (input.event.shiftKey && input.event.key !== 'Tab') {
 		return;
 	}
+
+	let shouldPreventDefault = false;
 
 	switch (input.event.key) {
 		case 'Enter': {
@@ -152,11 +144,6 @@ export async function handleComboboxKeyDown(input: {
 						state,
 						hooks: {
 							updateState
-						}
-					});
-					await updateState({
-						state: {
-							elementWithFocus: 'combobox'
 						}
 					});
 
@@ -238,14 +225,6 @@ export async function handleComboboxKeyDown(input: {
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
-					if (state.elementWithFocus !== 'listbox') {
-						await updateState({
-							state: {
-								elementWithFocus: 'listbox'
-							}
-						});
-					}
-
 					const nextOption = await input.hooks.getNextOption({
 						option: state.activeOption,
 						reason: 'combobox keydown: ArrowDown'
@@ -336,14 +315,6 @@ export async function handleComboboxKeyDown(input: {
 			state = await collectStateUpdates(
 				state,
 				async (updateState) => {
-					if (state.elementWithFocus !== 'listbox') {
-						await updateState({
-							state: {
-								elementWithFocus: 'listbox'
-							}
-						});
-					}
-
 					const prevOption = await input.hooks.getPreviousOption({
 						option: state.activeOption,
 						reason: 'combobox keydown: ArrowUp'
@@ -388,12 +359,6 @@ export async function handleComboboxKeyDown(input: {
 							state,
 							hooks: {
 								updateState
-							}
-						});
-
-						await updateState({
-							state: {
-								elementWithFocus: 'combobox'
 							}
 						});
 					} else if (input.value) {
@@ -466,25 +431,6 @@ export async function handleComboboxKeyDown(input: {
 }
 
 /**
- * Set the combobox as the element with visual focus.
- *
- * @param input
- */
-export async function handleComboboxFocus(input: {
-	state: State;
-	hooks: {
-		updateState: Hooks['updateState'];
-	};
-}): Promise<void> {
-	await input.hooks.updateState({
-		state: {
-			elementWithFocus: 'combobox'
-		},
-		reason: 'combobox focus'
-	});
-}
-
-/**
  * Open the listbox if needed and set the active option when there's a match with the user input.
  * Set the combobox as the element with visual focus.
  *
@@ -514,14 +460,6 @@ export async function handleComboboxClick(input: {
 					state,
 					hooks: {
 						updateState
-					}
-				});
-			}
-
-			if (state.elementWithFocus !== 'combobox') {
-				await updateState({
-					state: {
-						elementWithFocus: 'combobox'
 					}
 				});
 			}
@@ -605,14 +543,6 @@ export async function handleButtonClick(input: {
 						updateState
 					}
 				});
-
-				if (state.elementWithFocus != 'combobox') {
-					await updateState({
-						state: {
-							elementWithFocus: 'combobox'
-						}
-					});
-				}
 
 				if (input.hooks.focusCombobox) {
 					await input.hooks.focusCombobox({
@@ -734,14 +664,6 @@ export async function handleOptionClick(input: {
 				}
 			});
 
-			if (state.elementWithFocus != 'combobox') {
-				await updateState({
-					state: {
-						elementWithFocus: 'combobox'
-					}
-				});
-			}
-
 			if (input.hooks.focusCombobox) {
 				await input.hooks.focusCombobox({
 					reason: 'option click'
@@ -790,7 +712,6 @@ export async function handleBackgroundPointerUp(input: {
 	state = await collectStateUpdates(
 		state,
 		async (updateState) => {
-			await updateStateOnRemoveVisualFocus({ state, hooks: { updateState } });
 			await updateStateOnClose({ force: true, state, hooks: { updateState } });
 		},
 		async (state) =>
@@ -799,23 +720,6 @@ export async function handleBackgroundPointerUp(input: {
 				reason: 'background pointerup'
 			})
 	);
-}
-
-async function updateStateOnRemoveVisualFocus(input: {
-	state: State;
-	hooks: {
-		updateState: (input: UpdateStateInputInternal) => Promise<State>;
-	};
-}): Promise<State> {
-	let state = input.state;
-
-	state = await input.hooks.updateState({
-		state: {
-			elementWithFocus: null
-		}
-	});
-
-	return state;
 }
 
 async function updateStateOnClose(input: {
@@ -827,14 +731,10 @@ async function updateStateOnClose(input: {
 }): Promise<State> {
 	let state = input.state;
 
-	if (
-		state.isListboxOpen &&
-		(input.force || (state.elementWithFocus !== 'listbox' && state.elementWithFocus !== 'combobox'))
-	) {
+	if (state.isListboxOpen && input.force) {
 		state = await input.hooks.updateState({
 			state: {
 				isListboxOpen: false,
-				elementWithFocus: null,
 				activeOption: null
 			}
 		});
@@ -1272,10 +1172,6 @@ export interface State {
 	 * Define the open/closed state of the listbox.
 	 */
 	isListboxOpen: boolean;
-	/**
-	 * The element that has the focus.
-	 */
-	elementWithFocus: 'combobox' | 'listbox' | null;
 	/**
 	 * The currently active option.
 	 *
