@@ -161,10 +161,10 @@
 		openItemsSet = openItemsSet;
 	}
 
-	function selectItem(itemToSelect: TreeviewItemI) {
+	function selectItem(itemToSelect: TreeviewItemI | null) {
 		selectedItem = itemToSelect;
 
-		dispatch('change', { value: itemToSelect.value });
+		dispatch('change', { value: itemToSelect?.value ?? '' });
 	}
 
 	async function handleKeyDown(event: KeyboardEvent) {

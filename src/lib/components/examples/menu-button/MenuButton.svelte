@@ -154,7 +154,7 @@
 	}
 
 	function handleFocusOut(event: FocusEvent) {
-		if (!open || !document.hasFocus() || el?.contains(event.relatedTarget as Element)) {
+		if (!open || !document.hasFocus() || el.contains(event.relatedTarget as Element)) {
 			return;
 		}
 

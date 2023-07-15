@@ -49,6 +49,7 @@
 			case ' ':
 			case 'Home':
 			case 'End':
+			case 'Escape':
 				event.preventDefault();
 
 				switch (event.key) {
@@ -64,14 +65,18 @@
 							? options.indexOf(activeOption)
 							: value
 							? options.indexOf(value)
-							: -1;
+							: null;
 						switch (event.key) {
 							case 'ArrowDown':
-								activeOption = options.at(activeOptionIndex + 1) ?? options.at(0) ?? null;
+								activeOption =
+									options.at(activeOptionIndex != null ? activeOptionIndex + 1 : 0) ??
+									options.at(0) ??
+									null;
 								null;
 								break;
 							case 'ArrowUp':
-								activeOption = options.at(activeOptionIndex - 1) ?? null;
+								activeOption =
+									options.at(activeOptionIndex != null ? activeOptionIndex - 1 : -1) ?? null;
 								break;
 						}
 						break;
@@ -79,6 +84,13 @@
 					case ' ':
 						if (activeOption) {
 							selectOption(activeOption);
+						}
+						break;
+					case 'Escape':
+						if (value) {
+							value = '';
+						} else if (activeOption) {
+							activeOption = null;
 						}
 						break;
 				}
