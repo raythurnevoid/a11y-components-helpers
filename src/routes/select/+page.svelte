@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as api from './suggestions.js';
-	import Select from '$lib/components/examples/select/Select.svelte';
-	import SelectOption from '../../lib/components/examples/select/SelectOption.svelte';
+	import Select, { SelectOption } from '$lib/components/examples/select/Select.svelte';
 
 	let options: string[] | undefined = undefined;
 
@@ -16,7 +15,7 @@
 
 			loading = true;
 
-			const response = await api.fetchSuggestions();
+			const response = await api.fetchOptions();
 			if (response.status === 404) {
 				loading = false;
 				throw new Error('No results found');

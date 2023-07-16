@@ -1,4 +1,4 @@
-export async function fetchSuggestions() {
+export async function fetchOptions() {
 	return new Promise<Response>((resolve) => {
 		setTimeout(() => {
 			if (options.length === 0) {

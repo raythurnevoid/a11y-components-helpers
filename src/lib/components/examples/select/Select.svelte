@@ -1,7 +1,7 @@
 <script lang="ts" context="module">
 	let count: number = 0;
 
-	type OptionsAreReady = boolean | 'unchanged';
+	type OptionsAreReady = boolean;
 	type ActiveOption = string | null | undefined;
 
 	export { default as SelectOption } from './SelectOption.svelte';
@@ -16,16 +16,15 @@
 <script lang="ts">
 	import { createEventDispatcher, tick, setContext } from 'svelte';
 	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
-	import { writable, readonly, type Readable, type Writable } from 'svelte/store';
-	import { scrollIntoView } from '../../../scroll-into-view.js';
+	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
+	import { scrollIntoView } from '$lib/scroll-into-view.js';
 
 	export let id: string = `Select--${count++}`;
 
 	export let value: string = '';
 	export let label: string = '';
 	export let disabled: boolean = false;
-	let readonlyProp: boolean = false;
-	export { readonlyProp as readonly };
+	export let readonly: boolean = false;
 
 	export let computeOptions: () => Promise<OptionsAreReady> | OptionsAreReady = () => true;
 
@@ -45,8 +44,8 @@
 
 	let value$ = writable<string>(value);
 	$: $value$ = value;
-	let oldValue: string | null = value;
-	let canCommitValue: boolean = false;
+	let oldValue = value;
+	let canCommitValue = false;
 
 	let activeOption$: Writable<ActiveOption> = writable(undefined);
 
@@ -57,8 +56,8 @@
 	const timedFilter = new InputOptionsTimedFilter();
 
 	setContext<SelectContext>('select', {
-		value$: readonly(value$),
-		activeOption$: readonly(activeOption$),
+		value$: readonlyStore(value$),
+		activeOption$: readonlyStore(activeOption$),
 		handleOptionClick
 	});
 
@@ -67,11 +66,16 @@
 		await scrollIntoView(listboxEl, optionEl);
 	}
 
-	function getNextOptionToActivate(option: ActiveOption, direction: 'next' | 'prev') {
-		if (!options?.length) return null;
-
-		if (!option) {
-			return direction === 'next' ? options.at(0)! : options.at(-1)!;
+	function getNextOptionToActivate(
+		option: ActiveOption,
+		direction: 'next' | 'prev' | 'first' | 'last'
+	) {
+		if (!option || direction === 'first' || direction === 'last') {
+			if (direction === 'next' || direction === 'first') {
+				return options.at(0) ?? null;
+			} else {
+				return options.at(options.length - 1) ?? null;
+			}
 		}
 
 		const activeOptionIndex = options.indexOf(option);
@@ -99,11 +103,12 @@
 		}
 	}
 
-	function tryToOpen(): boolean {
+	async function tryToOpen(options?: { scrollActiveOptionIntoView: boolean }): Promise<boolean> {
 		if (isListboxOpen) return true;
-		else if (readonlyProp || disabled) return false;
+		else if (readonly || disabled) return false;
 
-		return (isListboxOpen = true);
+		isListboxOpen = true;
+		return await callComputeOptionsFn(options);
 	}
 
 	function close() {
@@ -115,9 +120,7 @@
 		scrollActiveOptionIntoView?: boolean;
 	}): Promise<boolean> {
 		const result = await computeOptions();
-		if (result === 'unchanged') {
-			return true;
-		} else if (!result) {
+		if (!result) {
 			return false;
 		}
 
@@ -134,9 +137,13 @@
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	function handleDomChanges(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+	function handleDomChanges(thisOptions?: {
+		areOptionsUnchanged?: boolean;
+		scrollActiveOptionIntoView?: boolean;
+	}) {
 		optionToElMap.clear();
 		let optionToActivate: string | null = null;
+
 		options = Array.from(
 			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not(aria-disabled)')
 		).map((el) => {
@@ -180,14 +187,13 @@
 		commitValue();
 	}
 
-	async function handleComboboxClick() {
-		if (!tryToOpen()) return;
-		await callComputeOptionsFn({
+	function handleButtonClick() {
+		tryToOpen({
 			scrollActiveOptionIntoView: true
 		});
 	}
 
-	async function handleComboboxKeyDown(event: KeyboardEvent) {
+	async function handleButtonKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
 		if (target !== buttonEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
@@ -208,8 +214,7 @@
 				break;
 			case 'PageUp':
 			case 'PageDown':
-				isHandled = true;
-				shouldPreventDefault = isListboxOpen;
+				isHandled = shouldPreventDefault = isListboxOpen;
 				break;
 			case 'Tab':
 				isHandled = true;
@@ -232,65 +237,59 @@
 						commitValue();
 					}
 				} else {
-					tryToOpen();
-					await callComputeOptionsFn({
+					await tryToOpen({
 						scrollActiveOptionIntoView: true
 					});
 				}
 				break;
 			case 'ArrowDown':
-			case 'ArrowUp': {
-				if (!isListboxOpen) {
-					if (!tryToOpen()) break;
-
-					if (
-						!(await callComputeOptionsFn({
-							scrollActiveOptionIntoView: false
-						}))
-					) {
-						break;
-					}
-				}
-
-				if (event.altKey) {
-					if (event.key === 'ArrowUp') close();
-					break;
-				}
-
-				const optionToActivate = getNextOptionToActivate(
-					$activeOption$,
-					event.key === 'ArrowDown' ? 'next' : 'prev'
-				);
-				setActiveOption(optionToActivate, {
-					scrollIntoView: true
-				});
-				break;
-			}
-
+			case 'ArrowUp':
 			case 'Home':
 			case 'End':
 			case 'PageUp':
-			case 'PageDown':
-				if (!isListboxOpen) {
-					if (event.key === 'Home' || event.key === 'End') {
-						if (!tryToOpen()) break;
-						if (
-							!(await callComputeOptionsFn({
-								scrollActiveOptionIntoView: true
-							}))
-						) {
+			case 'PageDown': {
+				switch (event.key) {
+					case 'ArrowDown':
+					case 'ArrowUp':
+						if (!(await tryToOpen())) {
 							break;
 						}
-					} else {
-						break;
-					}
+
+						if (event.altKey) {
+							if (event.key === 'ArrowUp') close();
+							break;
+						}
+					default:
+						if (!isListboxOpen) break;
 				}
 
-				setActiveOption(options.at(event.key === 'Home' || event.key === 'PageUp' ? 0 : -1)!, {
-					scrollIntoView: true
-				});
+				let optionToActivate: string | null | undefined = undefined;
+
+				switch (event.key) {
+					case 'ArrowDown':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'next');
+						break;
+					case 'ArrowUp':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'prev');
+						break;
+					case 'Home':
+					case 'PageUp':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'first');
+						break;
+					case 'End':
+					case 'PageDown':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'last');
+						break;
+				}
+
+				if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
+					setActiveOption(optionToActivate, {
+						scrollIntoView: true
+					});
+				}
 
 				break;
+			}
 
 			case 'Escape':
 				if (isListboxOpen) {
@@ -311,17 +310,9 @@
 				break;
 
 			default: {
-				if (!tryToOpen()) {
+				if (!(await tryToOpen())) {
 					break;
 				}
-
-				if (
-					!isListboxOpen &&
-					(await callComputeOptionsFn({
-						scrollActiveOptionIntoView: false
-					}))
-				)
-					break;
 
 				timedFilter.addChar(event.key);
 				const optionToActivate = timedFilter.find(options, $activeOption$, (option: string) =>
@@ -356,12 +347,12 @@
 			{disabled}
 			role="combobox"
 			aria-labelledby={labelId}
-			aria-readonly={readonlyProp}
+			aria-readonly={readonly}
 			aria-expanded={isListboxOpen}
 			aria-controls="Select__listbox"
 			aria-activedescendant={$activeOption$ ? optionToElMap.get($activeOption$)?.id ?? '' : ''}
-			on:keydown={handleComboboxKeyDown}
-			on:click={handleComboboxClick}
+			on:keydown={handleButtonKeyDown}
+			on:click={handleButtonClick}
 			on:change={handleChange}
 			on:blur={handleBlur}
 		>

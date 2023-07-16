@@ -1,14 +1,24 @@
 <script lang="ts" context="module">
-	let index: number = 0;
+	let count: number = 0;
+
+	type OptionsAreReady = boolean;
+	type ActiveOption = string | null | undefined;
+
+	export { default as AutocompleteOption } from './AutocompleteOption.svelte';
+
+	export interface AutocompleteContext {
+		value$: Readable<string>;
+		activeOption$: Readable<ActiveOption>;
+		handleOptionClick: (optionEl: HTMLLIElement) => void;
+	}
 </script>
 
 <script lang="ts">
-	import * as autocompleteHelpers from '$lib/lib/autocomplete/autocomplete.js';
-	import * as api from './suggestions.js';
-	import { onMount, createEventDispatcher } from 'svelte';
-	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
+	import { createEventDispatcher, tick, setContext } from 'svelte';
+	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
+	import { scrollIntoView } from '$lib/scroll-into-view.js';
 
-	export let id: string = `Autocomplete-${index++}`;
+	export let id: string = `Autocomplete-${count++}`;
 
 	export let value: string = '';
 	export let autocomplete: 'list' | 'both' | 'inline' | 'none' = 'both';
@@ -16,330 +26,358 @@
 	export let disabled: boolean = false;
 	export let readonly: boolean = false;
 
-	export let state = autocompleteHelpers.setState({
-		autocomplete,
-		isListboxOpen: false,
-		activeOption: null
-	});
+	export let computeOptions: (
+		filter: string | undefined
+	) => Promise<OptionsAreReady> | OptionsAreReady = () => true;
 
 	const dispatch = createEventDispatcher<{
+		'before-open': void;
 		change: { value: string };
 		input: { value: string };
 	}>();
 
-	let behavior = autocompleteHelpers.getBehavior(state);
-
-	let rootEl: HTMLElement;
+	let el: HTMLElement;
 	let comboboxEl: HTMLInputElement;
 	let listboxEl: HTMLElement;
-	let listboxId: string = `${id}__listbox`;
-	let inputId: string = `${id}__input`;
-	$: activeOptionId = state.activeOption ? getOptionId(state.activeOption) : null;
+	let listboxId = `${id}__listbox`;
+	let inputId = `${id}__input`;
 
-	$: a11yAttributes = autocompleteHelpers.getA11yAttributes({
-		state,
-		activeOptionId
-	});
+	let isListboxOpen: boolean = false;
 
-	let filter: string = value;
-	let valueOnLastChange: string | null = value;
+	let value$ = writable<string>(value);
+	$: $value$ = value;
+	let oldValue = value;
 	let canCommitValue: boolean = false;
 
-	let errorMessage: string | null = null;
-	let loading: boolean = false;
-	let suggestions: string[] = [];
-	let cachedFilter: string | null | undefined = undefined;
+	let activeOption$: Writable<ActiveOption> = writable(undefined);
 
-	let elementInViewChecker: ElementInViewChecker;
+	let options: string[] = [];
+	let optionToElMap = new Map<string, HTMLLIElement>();
 
-	let hooks = autocompleteHelpers.setHooks({
-		updateState: async (input) => {
-			state = { ...state, ...input.state };
+	$: canShowInlineSuggestions = autocomplete === 'inline' || autocomplete === 'both';
 
-			if (input.state.activeOption) {
-				handleActiveOptionChange();
-			}
-
-			return state;
-		},
-		prepareOptions: async () => {
-			let result = true;
-
-			filter = value;
-
-			if (behavior.canFilterOptionsInListbox) {
-				result = await fetchSuggestions({ filter });
-			} else {
-				result = await fetchSuggestions({ filter: '' });
-			}
-
-			return result;
-		},
-		getNextOption: async (input) => {
-			return getNextOption(input.option);
-		},
-		getPreviousOption: async (input) => {
-			return getPreviousOption(input.option);
-		},
-		findOptionToActivate: async (input) => {
-			if (input.reason === 'combobox input: delete') {
-				return null;
-			}
-
-			if (!suggestions || !filter) return;
-
-			let optionToActivate: string | null = null;
-
-			if (state.activeOption != null && suggestions.indexOf(state.activeOption) >= 0) {
-				optionToActivate = state.activeOption;
-			} else if (input.reason !== 'combobox click') {
-				optionToActivate =
-					suggestions?.find((option) => option.toLowerCase().startsWith(filter.toLowerCase())) ??
-					null;
-			}
-
-			return optionToActivate;
-		},
-		setComboboxValue: async (input) => {
-			canCommitValue = true;
-			comboboxEl.value = value = input.value ?? '';
-			setComboboxSelectionRange({
-				start: value.length,
-				end: value.length
-			});
-		},
-		focusCombobox: async () => {
-			comboboxEl.focus();
-		},
-		showInlineSuggestion: async () => {
-			if (state.activeOption) {
-				comboboxEl.value = value = state.activeOption ?? '';
-				setComboboxSelectionRange({
-					start: filter.length,
-					end: state.activeOption.length
-				});
-			}
-		},
-		checkIfListboxCanOpen: async () => {
-			return !disabled && !readonly;
-		},
-		commitValue: async () => {
-			if (!canCommitValue) return;
-
-			let shouldDispatchChange = valueOnLastChange !== value;
-
-			if (shouldDispatchChange) {
-				valueOnLastChange = value;
-				dispatch('change', { value });
-				canCommitValue = false;
-			}
-		}
+	setContext<AutocompleteContext>('select', {
+		value$: readonlyStore(value$),
+		activeOption$: readonlyStore(activeOption$),
+		handleOptionClick
 	});
-
-	onMount(() => {
-		comboboxEl = rootEl.querySelector('input')!;
-
-		elementInViewChecker = new ElementInViewChecker(listboxEl);
-
-		() => {
-			elementInViewChecker.destroy();
-		};
-	});
-
-	async function fetchSuggestions(input: { filter: string }) {
-		try {
-			errorMessage = null;
-
-			if (cachedFilter === input.filter) {
-				loading = false;
-				return true;
-			}
-
-			loading = true;
-
-			const response = await api.fetchSuggestions(input.filter);
-			if (response.status === 404) {
-				loading = false;
-				throw new Error('No results found');
-			} else if (response.status >= 500) {
-				throw new Error('Error fetching results', {
-					cause: response.body
-				});
-			}
-
-			const responseBody = await response.json();
-
-			suggestions = responseBody;
-			cachedFilter = input.filter;
-			loading = false;
-
-			return true;
-		} catch (e) {
-			const error = e as Error;
-			errorMessage = error.message;
-			loading = false;
-
-			return false;
-		}
-	}
-
-	function findComboboxValueMatch() {
-		return suggestions?.find((option) => option === value);
-	}
-
-	async function setComboboxSelectionRange(input: { start: number; end: number }) {
-		comboboxEl.setSelectionRange(input.start, input.end);
-	}
 
 	async function scrollOptionIntoView(input: { option: string }) {
-		const optionEl = listboxEl.querySelector(`[value="${input.option}"]`);
+		const optionEl = optionToElMap.get(input.option)!;
+		await scrollIntoView(listboxEl, optionEl);
+	}
 
-		if (!optionEl) {
+	function getNextOptionToActivate(
+		option: ActiveOption,
+		direction: 'next' | 'prev' | 'first' | 'last'
+	) {
+		if (!options?.length) return null;
+
+		if (!option || direction === 'first' || direction === 'last') {
+			if (direction === 'next' || direction === 'first') {
+				return options.at(0) ?? null;
+			} else {
+				return options.at(options.length - 1) ?? null;
+			}
+		}
+
+		const activeOptionIndex = options.indexOf(option);
+		const optionToActivateIndex =
+			direction === 'next' ? activeOptionIndex + 1 : activeOptionIndex - 1;
+		const optionToActivate = options.at(optionToActivateIndex) ?? options.at(0)!;
+
+		return optionToActivate;
+	}
+
+	function setValue(newValue: string) {
+		canCommitValue = true;
+		comboboxEl.value = value = newValue;
+		comboboxEl.setSelectionRange(value.length, value.length);
+	}
+
+	function commitValue() {
+		if (!canCommitValue) return;
+
+		let shouldDispatchChange = oldValue !== value;
+
+		if (shouldDispatchChange) {
+			oldValue = value;
+			dispatch('change', { value });
+			canCommitValue = false;
+		}
+	}
+
+	async function tryToOpen(options?: { scrollActiveOptionIntoView: boolean }): Promise<boolean> {
+		if (isListboxOpen) return true;
+		else if (readonly || disabled) return false;
+
+		if (
+			!dispatch('before-open', undefined, {
+				cancelable: true
+			})
+		) {
+			return false;
+		}
+
+		isListboxOpen = autocomplete !== 'inline' ? true : false;
+		return await callComputeOptionsFn(options);
+	}
+
+	function close() {
+		$activeOption$ = null;
+		isListboxOpen = false;
+	}
+
+	async function callComputeOptionsFn(options?: {
+		scrollActiveOptionIntoView?: boolean;
+	}): Promise<boolean> {
+		const result = await computeOptions(value);
+		if (!result) {
+			return false;
+		}
+
+		await tick();
+
+		handleDomChanges(options);
+
+		return true;
+	}
+
+	function setActiveOption(newActiveOption: string | null, options?: { scrollIntoView?: boolean }) {
+		if ($activeOption$ === newActiveOption) return;
+		$activeOption$ = newActiveOption;
+		handleActiveOptionChange($activeOption$, options);
+	}
+
+	function handleDomChanges(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+		let optionToActivate: string | null = null;
+
+		optionToElMap.clear();
+		options = Array.from(
+			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not(aria-disabled)')
+		).map((el) => {
+			const optionValue = el.getAttribute('data-value')!;
+			optionToElMap.set(optionValue, el as HTMLLIElement);
+
+			if (
+				!optionToActivate &&
+				value &&
+				optionValue.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
+			) {
+				optionToActivate = optionValue;
+			}
+
+			return optionValue;
+		});
+		optionToElMap = optionToElMap;
+
+		setActiveOption(optionToActivate, {
+			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
+		});
+	}
+
+	function handleActiveOptionChange(
+		activeOption: ActiveOption,
+		options?: { scrollIntoView?: boolean }
+	) {
+		if (!activeOption) return;
+		if (options?.scrollIntoView) scrollOptionIntoView({ option: activeOption });
+	}
+
+	function handleBlur(event: FocusEvent) {
+		if (!isListboxOpen || !document.hasFocus() || el.contains(event.relatedTarget as HTMLElement)) {
 			return;
+		} else if (el.querySelector(':scope:hover, :hover')) {
+			return comboboxEl.focus();
 		}
 
-		const isOptionInView = await elementInViewChecker.check(optionEl);
-		if (!isOptionInView) {
-			optionEl.scrollIntoView({
-				block: 'nearest'
-			});
-		}
+		close();
+		commitValue();
 	}
 
-	async function getNextOption(option: string | null) {
-		if (!suggestions?.length) return null;
+	function handleOptionClick(optionEl: HTMLLIElement) {
+		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
-		let index: number = 0;
-
-		if (!option) {
-			const match = findComboboxValueMatch();
-			if (match) {
-				index = suggestions.indexOf(match) + 1;
-			}
-		} else {
-			index = suggestions.indexOf(option) + 1;
-		}
-
-		if (index > suggestions.length - 1) {
-			index = 0;
-		}
-
-		return suggestions.at(index) ?? null;
+		setValue(optionEl.getAttribute('data-value')!);
+		close();
+		comboboxEl.focus();
+		commitValue();
 	}
 
-	async function getPreviousOption(option: string | null) {
-		if (!suggestions?.length) return null;
-
-		let index: number = 0;
-
-		if (!option) {
-			const match = findComboboxValueMatch();
-			if (match) {
-				index = suggestions.indexOf(match) - 1;
-			}
-		} else {
-			index = suggestions.indexOf(option) - 1;
-		}
-
-		if (index < 0) {
-			index = suggestions.length - 1;
-		}
-
-		return suggestions.at(index) ?? null;
+	function handleButtonClick() {
+		comboboxEl.focus();
+		handleComboboxClick();
 	}
 
-	function getOptionId(option: string) {
-		return `${id}__option:${option}`;
-	}
-
-	async function handleActiveOptionChange() {
-		if (!state.activeOption) return;
-
-		scrollOptionIntoView({ option: state.activeOption });
-	}
-
-	async function handleRootFocusOut(event: FocusEvent) {
-		await autocompleteHelpers.handleRootFocusOut({ state, rootEl, value, event, hooks });
-	}
-
-	async function handleOptionClick(input: { option: string }) {
-		await autocompleteHelpers.handleOptionClick({
-			state,
-			option: input.option,
-			value,
-			hooks
-		});
-	}
-
-	async function handleButtonClick() {
-		await autocompleteHelpers.handleButtonClick({
-			state,
-			hooks
-		});
-	}
-
-	async function handleBackgroundPointerUp(event: MouseEvent) {
-		await autocompleteHelpers.handleBackgroundPointerUp({ state, event, rootEl, hooks });
-	}
-
-	async function handleComboboxClick() {
-		await autocompleteHelpers.handleComboboxClick({
-			state,
-			hooks
+	function handleComboboxClick() {
+		tryToOpen({
+			scrollActiveOptionIntoView: true
 		});
 	}
 
 	async function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
-		if (target.tagName !== 'INPUT') {
+		if (target !== comboboxEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
 			return;
 		}
 
-		await autocompleteHelpers.handleComboboxKeyDown({
-			state,
-			event,
-			hooks,
-			value
-		});
+		let isHandled = false;
+		let shouldPreventDefault = false;
+		switch (event.key) {
+			case 'Enter':
+			case 'ArrowDown':
+			case 'ArrowUp':
+			case 'Escape':
+				isHandled = shouldPreventDefault = true;
+				break;
+			case 'PageUp':
+			case 'PageDown':
+			case 'Home':
+			case 'End':
+				isHandled = shouldPreventDefault = isListboxOpen;
+				break;
+			case 'Tab':
+				isHandled = true;
+				break;
+		}
+
+		if (!isHandled) return;
+		if (shouldPreventDefault) event.preventDefault();
+
+		switch (event.key) {
+			case 'Enter':
+				if (isListboxOpen) {
+					if ($activeOption$ != null) {
+						setValue($activeOption$);
+						close();
+						commitValue();
+					}
+				} else {
+					await tryToOpen({
+						scrollActiveOptionIntoView: true
+					});
+				}
+				break;
+			case 'ArrowDown':
+			case 'ArrowUp':
+			case 'Home':
+			case 'End':
+			case 'PageUp':
+			case 'PageDown': {
+				switch (event.key) {
+					case 'ArrowDown':
+					case 'ArrowUp':
+						if (!tryToOpen()) {
+							break;
+						}
+
+						if (event.altKey) {
+							if (event.key === 'ArrowUp') close();
+							break;
+						}
+					default:
+						if (!isListboxOpen) break;
+				}
+
+				let optionToActivate: string | null | undefined = undefined;
+
+				switch (event.key) {
+					case 'ArrowDown':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'next');
+						break;
+					case 'ArrowUp':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'prev');
+						break;
+					case 'Home':
+					case 'PageUp':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'first');
+						break;
+					case 'End':
+					case 'PageDown':
+						optionToActivate = getNextOptionToActivate($activeOption$, 'last');
+						break;
+				}
+
+				if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
+					setActiveOption(optionToActivate, {
+						scrollIntoView: true
+					});
+
+					if (canShowInlineSuggestions) {
+						setValue($activeOption$ ?? '');
+					}
+				}
+
+				break;
+			}
+
+			case 'Escape':
+				if (isListboxOpen) {
+					close();
+				} else if (value) {
+					setValue('');
+					commitValue();
+				}
+				break;
+
+			case 'Tab':
+				if ($activeOption$ != null && value !== $activeOption$) {
+					setValue($activeOption$);
+					close();
+					commitValue();
+				}
+
+				break;
+		}
 	}
 
 	async function handleComboboxInput(e: Event) {
+		const event = e as InputEvent;
+
 		dispatch('input', {
 			value
 		});
 
-		const event = e as InputEvent;
-		const target = event.target as HTMLInputElement;
-
 		canCommitValue = true;
-		value = target.value;
+		value = comboboxEl.value;
 
-		await autocompleteHelpers.handleComboboxInput({
-			state,
-			event,
-			hooks
-		});
+		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
+			event.preventDefault();
+		} else {
+			return;
+		}
+
+		if (isListboxOpen) {
+			await callComputeOptionsFn({
+				scrollActiveOptionIntoView: true
+			});
+		} else if (
+			!(await tryToOpen({
+				scrollActiveOptionIntoView: true
+			}))
+		) {
+			return;
+		}
+
+		if (canShowInlineSuggestions && $activeOption$ && event.inputType.startsWith('insert')) {
+			const selectionStart = value.length;
+			comboboxEl.value = value = $activeOption$ ?? '';
+			comboboxEl.setSelectionRange(selectionStart, value.length);
+		}
 	}
 
-	async function handleChange(event: Event) {
-		await autocompleteHelpers.handleComboboxChange({
-			event
-		});
+	function handleChange(event: Event) {
+		event.stopPropagation();
+		event.preventDefault();
 	}
 </script>
 
-<svelte:window on:pointerup={handleBackgroundPointerUp} />
-
-<div
-	bind:this={rootEl}
-	class="Autocomplete Autocomplete__listbox-anchor"
-	on:focusout={handleRootFocusOut}
->
+<div bind:this={el} {id} class="Autocomplete Autocomplete__listbox-anchor">
 	<label class="Autocomplete__input-container">
 		<span>{label}</span>
 
-		<div {id} class="Autocomplete__input-group">
+		<div class="Autocomplete__input-group">
 			<input
 				bind:this={comboboxEl}
 				id={inputId}
@@ -349,22 +387,24 @@
 				{disabled}
 				{readonly}
 				role="combobox"
-				aria-expanded={a11yAttributes.combobox['aria-expanded']}
 				aria-autocomplete={autocomplete}
+				aria-expanded={isListboxOpen}
 				aria-controls="Autocomplete__listbox"
-				aria-activedescendant={a11yAttributes.combobox['aria-activedescendant']}
+				aria-activedescendant={$activeOption$ ? optionToElMap.get($activeOption$)?.id ?? '' : ''}
 				on:input={handleComboboxInput}
 				on:keydown={handleComboboxKeyDown}
-				on:click={handleComboboxClick}
+				on:click={handleButtonClick}
 				on:change={handleChange}
+				on:blur={handleBlur}
 			/>
 
 			<button
 				class="Autocomplete__button"
 				type="button"
 				tabindex="-1"
+				{disabled}
 				aria-label={label}
-				aria-expanded={a11yAttributes.button['aria-expanded']}
+				aria-expanded={isListboxOpen}
 				aria-controls={listboxId}
 				on:click={handleButtonClick}
 			>
@@ -387,36 +427,17 @@
 		</div>
 	</label>
 
-	<div
+	<!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
+	<menu
 		bind:this={listboxEl}
 		id={listboxId}
 		class="Autocomplete__listbox"
-		class:Autocomplete__listbox--open={state.isListboxOpen}
+		class:Autocomplete__listbox--open={isListboxOpen}
 		role="listbox"
 		aria-label={label}
 	>
-		{#if errorMessage}
-			<option disabled>{errorMessage}</option>
-		{:else if loading}
-			<option disabled>Loading...</option>
-		{:else if suggestions.length}
-			{#each suggestions as suggestion}
-				<option
-					id={getOptionId(suggestion)}
-					class="Autocomplete__option"
-					class:Autocomplete__option--active={state.activeOption === suggestion}
-					class:Autocomplete__option--selected={value === suggestion}
-					value={suggestion}
-					aria-selected={state.activeOption === suggestion
-						? a11yAttributes.activeOption['aria-selected']
-						: a11yAttributes.otherOptions['aria-selected']}
-					on:click={() => handleOptionClick({ option: suggestion })}
-				>
-					{suggestion}
-				</option>
-			{/each}
-		{/if}
-	</div>
+		<slot />
+	</menu>
 </div>
 
 <style>
@@ -431,20 +452,6 @@
 
 	.Autocomplete__input-container {
 		display: block;
-	}
-
-	.Autocomplete__listbox {
-		display: none;
-		position: absolute;
-		width: 100%;
-		border: black solid 1px;
-		max-height: 200px;
-		overflow-y: auto;
-		overflow-x: hidden;
-	}
-
-	.Autocomplete__listbox:focus-within {
-		border: blue solid 1px;
 	}
 
 	.Autocomplete__input-group {
@@ -476,23 +483,24 @@
 		background-color: lightgray;
 	}
 
+	.Autocomplete__listbox {
+		display: none;
+		position: absolute;
+		width: 100%;
+		border: black solid 1px;
+		max-height: 200px;
+		overflow-y: auto;
+		overflow-x: hidden;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.Autocomplete__listbox:focus-within {
+		border: blue solid 1px;
+	}
+
 	.Autocomplete__listbox--open {
 		display: block;
-	}
-
-	.Autocomplete__option {
-		cursor: pointer;
-	}
-
-	.Autocomplete__option:where(:hover) {
-		background-color: whitesmoke;
-	}
-
-	.Autocomplete__option--selected {
-		background-color: lightblue;
-	}
-
-	.Autocomplete__option--active {
-		background-color: lightgray;
 	}
 </style>
