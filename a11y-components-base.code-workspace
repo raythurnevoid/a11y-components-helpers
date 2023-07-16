@@ -1,10 +1,12 @@
 {
 	"folders": [
 		{
-			"path": ".",
+			"name": "a11y-components-base",
+			"path": "."
 		},
 		{
-			"path": "website",
+			"name": "website",
+			"path": "website"
 		}
 	],
 	"settings": {
@@ -15,7 +17,7 @@
 			"activityBar.foreground": "#ffffff",
 			"activityBar.activeBorder": "#f3f8ff",
 			"activityBarBadge.background": "#0a0a1d",
-			"activityBarBadge.foreground": "#e7e7e7",
+			"activityBarBadge.foreground": "#e7e7e7"
 		},
 		"editor.tabSize": 2,
 		"editor.detectIndentation": false,
