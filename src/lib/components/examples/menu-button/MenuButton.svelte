@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
+	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
 	import { createEventDispatcher, onMount, tick } from 'svelte';
 
 	let el: HTMLElement;
@@ -21,7 +21,7 @@
 
 	let activeMenuItem: string | null | undefined = undefined;
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
+	const temporaryFilter = new InputOptionsTimedFilter();
 
 	onMount(() => {
 		handleDomChange();

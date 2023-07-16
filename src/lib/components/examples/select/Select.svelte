@@ -14,11 +14,9 @@
 </script>
 
 <script lang="ts">
-	import { onMount, createEventDispatcher, tick, setContext } from 'svelte';
-	import ElementInViewChecker from '$lib/ElementInViewChecker.js';
-	import { TemporaryOnKeyDownFilterStore } from '$lib/lib/menu/menu.js';
+	import { createEventDispatcher, tick, setContext } from 'svelte';
+	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
 	import { writable, readonly, type Readable, type Writable } from 'svelte/store';
-	import { IntoViewScroller } from '../../../IntoViewScroller.js';
 	import { scrollIntoView } from '../../../scroll-into-view.js';
 
 	export let id: string = `Select--${count++}`;
@@ -32,7 +30,6 @@
 	export let computeOptions: () => Promise<OptionsAreReady> | OptionsAreReady = () => true;
 
 	const dispatch = createEventDispatcher<{
-		'before-open': void;
 		change: { value: string };
 		input: { value: string };
 	}>();
@@ -57,9 +54,7 @@
 	let optionToElMap = new Map<string, HTMLLIElement>();
 
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new TemporaryOnKeyDownFilterStore();
-
-	let intoViewScroller: IntoViewScroller;
+	const timedFilter = new InputOptionsTimedFilter();
 
 	setContext<SelectContext>('select', {
 		value$: readonly(value$),
@@ -67,17 +62,8 @@
 		handleOptionClick
 	});
 
-	onMount(() => {
-		intoViewScroller = new IntoViewScroller(listboxEl);
-
-		() => {
-			intoViewScroller.destroy();
-		};
-	});
-
 	async function scrollOptionIntoView(input: { option: string }) {
 		const optionEl = optionToElMap.get(input.option)!;
-		// await intoViewScroller.scrollIntoView(optionEl);
 		await scrollIntoView(listboxEl, optionEl);
 	}
 
@@ -96,9 +82,9 @@
 		return optionToActivate;
 	}
 
-	function setComboboxValue(newValue: string) {
+	function setValue(newValue: string) {
 		canCommitValue = true;
-		buttonEl.value = value = newValue ?? '';
+		value = newValue;
 	}
 
 	function commitValue() {
@@ -115,12 +101,7 @@
 
 	function tryToOpen(): boolean {
 		if (isListboxOpen) return true;
-
-		if (readonlyProp || disabled) return false;
-
-		const canContinue = dispatch('before-open', undefined, { cancelable: true });
-
-		if (!canContinue) return false;
+		else if (readonlyProp || disabled) return false;
 
 		return (isListboxOpen = true);
 	}
@@ -130,7 +111,7 @@
 		isListboxOpen = false;
 	}
 
-	async function callComputeOptionsFn(thisOptions?: {
+	async function callComputeOptionsFn(options?: {
 		scrollActiveOptionIntoView?: boolean;
 	}): Promise<boolean> {
 		const result = await computeOptions();
@@ -142,7 +123,7 @@
 
 		await tick();
 
-		handleDomChanges(thisOptions);
+		handleDomChanges(options);
 
 		return true;
 	}
@@ -193,7 +174,7 @@
 	function handleOptionClick(optionEl: HTMLLIElement) {
 		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
-		setComboboxValue(optionEl.getAttribute('data-value')!);
+		setValue(optionEl.getAttribute('data-value')!);
 		close();
 		buttonEl.focus();
 		commitValue();
@@ -209,15 +190,7 @@
 	async function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
-		if (target !== buttonEl) {
-			return;
-		}
-
-		if (event.ctrlKey) {
-			return;
-		}
-
-		if (event.shiftKey && event.key !== 'Tab') {
+		if (target !== buttonEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
 			return;
 		}
 
@@ -254,7 +227,7 @@
 			case ' ':
 				if (isListboxOpen) {
 					if ($activeOption$ != null) {
-						setComboboxValue($activeOption$);
+						setValue($activeOption$);
 						close();
 						commitValue();
 					}
@@ -323,14 +296,14 @@
 				if (isListboxOpen) {
 					close();
 				} else if (value) {
-					setComboboxValue('');
+					setValue('');
 					commitValue();
 				}
 				break;
 
 			case 'Tab':
 				if ($activeOption$ != null && value !== $activeOption$) {
-					setComboboxValue($activeOption$);
+					setValue($activeOption$);
 					close();
 					commitValue();
 				}
@@ -338,8 +311,6 @@
 				break;
 
 			default: {
-				let optionToActivate: string | undefined = undefined;
-
 				if (!tryToOpen()) {
 					break;
 				}
@@ -352,29 +323,10 @@
 				)
 					break;
 
-				temporaryFilter.addChar(event.key);
-				$activeOption$ =
-					options.find((item) =>
-						item.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase())
-					) ?? $activeOption$;
-
-				let itemsToSearchFirst = $activeOption$
-					? options.slice(options.indexOf($activeOption$) + 1)
-					: null;
-				let itemsToSearchAfter =
-					itemsToSearchFirst && $activeOption$
-						? options.slice(0, options.indexOf($activeOption$) + 1)
-						: options;
-				const filterFn = (option: string) =>
-					option.toLowerCase().startsWith(temporaryFilter.filter.toLowerCase());
-
-				if (itemsToSearchFirst) {
-					optionToActivate = itemsToSearchFirst.find(filterFn);
-				}
-
-				if (!optionToActivate) {
-					optionToActivate = itemsToSearchAfter.find(filterFn) ?? optionToActivate;
-				}
+				timedFilter.addChar(event.key);
+				const optionToActivate = timedFilter.find(options, $activeOption$, (option: string) =>
+					option.toLowerCase().startsWith(timedFilter.filter.toLowerCase())
+				);
 
 				if (optionToActivate !== undefined) {
 					setActiveOption(optionToActivate, {
