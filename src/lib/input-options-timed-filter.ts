@@ -1,3 +1,5 @@
+import { findOptionToActivateWithFilter } from './find-option-to-activate-with-filter.js';
+
 export class InputOptionsTimedFilter {
 	#filter: string = '';
 	#timeout: ReturnType<typeof setTimeout> | null = null;
@@ -26,23 +28,6 @@ export class InputOptionsTimedFilter {
 		startingPoint: string | null | undefined,
 		filterFn: (option: string) => boolean
 	) {
-		let result: string | undefined = undefined;
-
-		const itemsToSearchFirst = startingPoint
-			? options.slice(options.indexOf(startingPoint) + 1)
-			: null;
-
-		if (itemsToSearchFirst) {
-			result = itemsToSearchFirst.find(filterFn);
-		}
-
-		if (!result && itemsToSearchFirst) {
-			const itemsToSearchAfter = startingPoint
-				? options.slice(0, options.indexOf(startingPoint) + 1)
-				: options;
-			result = itemsToSearchAfter.find(filterFn);
-		}
-
-		return result ?? startingPoint ?? undefined;
+		return findOptionToActivateWithFilter(options, startingPoint, true, filterFn);
 	}
 }

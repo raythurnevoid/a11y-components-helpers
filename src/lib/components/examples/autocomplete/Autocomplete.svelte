@@ -17,6 +17,8 @@
 	import { createEventDispatcher, tick, setContext } from 'svelte';
 	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
 	import { scrollIntoView } from '$lib/scroll-into-view.js';
+	import { findOptionToActivateWithFilter } from '$lib/find-option-to-activate-with-filter.js';
+	import { debounce } from '$lib/debounce.js';
 
 	export let id: string = `Autocomplete-${count++}`;
 
@@ -27,7 +29,7 @@
 	export let readonly: boolean = false;
 
 	export let computeOptions: (
-		filter: string | undefined
+		filter: string | null
 	) => Promise<OptionsAreReady> | OptionsAreReady = () => true;
 
 	const dispatch = createEventDispatcher<{
@@ -43,6 +45,7 @@
 	let inputId = `${id}__input`;
 
 	let isListboxOpen: boolean = false;
+	let userExplicitlyClosed: boolean = false;
 
 	let value$ = writable<string>(value);
 	$: $value$ = value;
@@ -55,6 +58,7 @@
 	let optionToElMap = new Map<string, HTMLLIElement>();
 
 	$: canShowInlineSuggestions = autocomplete === 'inline' || autocomplete === 'both';
+	$: canShowListSuggestions = autocomplete === 'list' || autocomplete === 'both';
 
 	setContext<AutocompleteContext>('select', {
 		value$: readonlyStore(value$),
@@ -107,9 +111,11 @@
 		}
 	}
 
-	async function tryToOpen(options?: { scrollActiveOptionIntoView: boolean }): Promise<boolean> {
+	async function openAndComputeOptions(thisOptions?: {
+		scrollActiveOptionIntoView: boolean;
+	}): Promise<boolean> {
 		if (isListboxOpen) return true;
-		else if (readonly || disabled) return false;
+		else if (readonly || disabled || userExplicitlyClosed) return false;
 
 		if (
 			!dispatch('before-open', undefined, {
@@ -120,25 +126,39 @@
 		}
 
 		isListboxOpen = autocomplete !== 'inline' ? true : false;
-		return await callComputeOptionsFn(options);
+		await callComputeOptionsFn(thisOptions);
+		return true;
 	}
 
 	function close() {
-		$activeOption$ = null;
 		isListboxOpen = false;
 	}
 
-	async function callComputeOptionsFn(options?: {
+	async function callComputeOptionsFn(thisOptions?: {
 		scrollActiveOptionIntoView?: boolean;
 	}): Promise<boolean> {
-		const result = await computeOptions(value);
+		const result = await computeOptions(autocomplete !== 'none' ? value : null);
+
 		if (!result) {
+			if (autocomplete === 'none') {
+				const optionToActivate =
+					findOptionToActivateWithFilter(options, $activeOption$, false, (option: string) =>
+						isOptionToActivate(option, value)
+					) ?? null;
+
+				if (optionToActivate !== undefined) {
+					setActiveOption(optionToActivate, {
+						scrollIntoView: thisOptions?.scrollActiveOptionIntoView
+					});
+				}
+			}
+
 			return false;
 		}
 
 		await tick();
 
-		handleDomChanges(options);
+		handleDomChanges(thisOptions);
 
 		return true;
 	}
@@ -153,17 +173,15 @@
 		let optionToActivate: string | null = null;
 
 		optionToElMap.clear();
+		const optionToActivateValue = value ?? $activeOption$;
+
 		options = Array.from(
 			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not(aria-disabled)')
 		).map((el) => {
 			const optionValue = el.getAttribute('data-value')!;
 			optionToElMap.set(optionValue, el as HTMLLIElement);
 
-			if (
-				!optionToActivate &&
-				value &&
-				optionValue.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
-			) {
+			if (!optionToActivate && isOptionToActivate(optionValue, optionToActivateValue)) {
 				optionToActivate = optionValue;
 			}
 
@@ -174,6 +192,10 @@
 		setActiveOption(optionToActivate, {
 			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
 		});
+	}
+
+	function isOptionToActivate(option: string, value: string) {
+		return !!value && option.toLocaleLowerCase().startsWith(value.toLocaleLowerCase());
 	}
 
 	function handleActiveOptionChange(
@@ -191,6 +213,7 @@
 			return comboboxEl.focus();
 		}
 
+		userExplicitlyClosed = false;
 		close();
 		commitValue();
 	}
@@ -210,7 +233,8 @@
 	}
 
 	function handleComboboxClick() {
-		tryToOpen({
+		userExplicitlyClosed = false;
+		openAndComputeOptions({
 			scrollActiveOptionIntoView: true
 		});
 	}
@@ -254,7 +278,8 @@
 						commitValue();
 					}
 				} else {
-					await tryToOpen({
+					userExplicitlyClosed = false;
+					await openAndComputeOptions({
 						scrollActiveOptionIntoView: true
 					});
 				}
@@ -268,16 +293,20 @@
 				switch (event.key) {
 					case 'ArrowDown':
 					case 'ArrowUp':
-						if (!tryToOpen()) {
-							break;
-						}
-
-						if (event.altKey) {
-							if (event.key === 'ArrowUp') close();
+						userExplicitlyClosed = false;
+						if (!openAndComputeOptions()) {
 							break;
 						}
 					default:
 						if (!isListboxOpen) break;
+				}
+
+				if (event.altKey) {
+					if (event.key === 'ArrowUp') {
+						userExplicitlyClosed = true;
+						close();
+					}
+					break;
 				}
 
 				let optionToActivate: string | null | undefined = undefined;
@@ -314,6 +343,7 @@
 
 			case 'Escape':
 				if (isListboxOpen) {
+					userExplicitlyClosed = true;
 					close();
 				} else if (value) {
 					setValue('');
@@ -333,6 +363,8 @@
 	}
 
 	async function handleComboboxInput(e: Event) {
+		const checkIfHasOverlap = await debounce({ key: handleComboboxInput });
+
 		const event = e as InputEvent;
 
 		dispatch('input', {
@@ -348,17 +380,20 @@
 			return;
 		}
 
-		if (isListboxOpen) {
+		if (isListboxOpen || autocomplete === 'inline') {
 			await callComputeOptionsFn({
 				scrollActiveOptionIntoView: true
 			});
 		} else if (
-			!(await tryToOpen({
+			!userExplicitlyClosed &&
+			!(await openAndComputeOptions({
 				scrollActiveOptionIntoView: true
 			}))
 		) {
 			return;
 		}
+
+		if (checkIfHasOverlap()) return;
 
 		if (canShowInlineSuggestions && $activeOption$ && event.inputType.startsWith('insert')) {
 			const selectionStart = value.length;
@@ -386,11 +421,14 @@
 				type="text"
 				{disabled}
 				{readonly}
+				autocomplete="off"
 				role="combobox"
 				aria-autocomplete={autocomplete}
 				aria-expanded={isListboxOpen}
 				aria-controls="Autocomplete__listbox"
-				aria-activedescendant={$activeOption$ ? optionToElMap.get($activeOption$)?.id ?? '' : ''}
+				aria-activedescendant={isListboxOpen && $activeOption$
+					? optionToElMap.get($activeOption$)?.id ?? ''
+					: ''}
 				on:input={handleComboboxInput}
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleButtonClick}

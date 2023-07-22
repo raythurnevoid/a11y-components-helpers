@@ -315,9 +315,10 @@
 				}
 
 				timedFilter.addChar(event.key);
-				const optionToActivate = timedFilter.find(options, $activeOption$, (option: string) =>
-					option.toLowerCase().startsWith(timedFilter.filter.toLowerCase())
-				);
+				const optionToActivate =
+					timedFilter.find(options, $activeOption$, (option: string) =>
+						option.toLowerCase().startsWith(timedFilter.filter.toLowerCase())
+					) ?? $activeOption$;
 
 				if (optionToActivate !== undefined) {
 					setActiveOption(optionToActivate, {

@@ -9,11 +9,11 @@
 	let selectedValue: string = value;
 	let suggestions: string[] | undefined = undefined;
 
-	let cachedFilter: string | undefined = undefined;
+	let cachedFilter: string | null | undefined = undefined;
 	let errorMessage: string | null = null;
 	let loading: boolean = false;
 
-	async function computeOptions(filter: string | undefined) {
+	async function computeOptions(filter: string | null) {
 		try {
 			if (filter === cachedFilter) return false;
 
