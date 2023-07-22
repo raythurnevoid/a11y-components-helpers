@@ -46,6 +46,7 @@
 
 	let isListboxOpen: boolean = false;
 	let userExplicitlyClosed: boolean = false;
+	let userBlurredWithTab: boolean = false;
 
 	let value$ = writable<string>(value);
 	$: $value$ = value;
@@ -58,7 +59,6 @@
 	let optionToElMap = new Map<string, HTMLLIElement>();
 
 	$: canShowInlineSuggestions = autocomplete === 'inline' || autocomplete === 'both';
-	$: canShowListSuggestions = autocomplete === 'list' || autocomplete === 'both';
 
 	setContext<AutocompleteContext>('select', {
 		value$: readonlyStore(value$),
@@ -209,11 +209,11 @@
 	function handleBlur(event: FocusEvent) {
 		if (!isListboxOpen || !document.hasFocus() || el.contains(event.relatedTarget as HTMLElement)) {
 			return;
-		} else if (el.querySelector(':scope:hover, :hover')) {
+		} else if (!userBlurredWithTab && el.querySelector(':scope:hover, :hover')) {
 			return comboboxEl.focus();
 		}
 
-		userExplicitlyClosed = false;
+		userBlurredWithTab = userExplicitlyClosed = false;
 		close();
 		commitValue();
 	}
@@ -352,6 +352,7 @@
 				break;
 
 			case 'Tab':
+				userBlurredWithTab = true;
 				if ($activeOption$ != null && value !== $activeOption$) {
 					setValue($activeOption$);
 					close();
