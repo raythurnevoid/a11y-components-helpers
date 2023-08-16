@@ -101,13 +101,14 @@
 		}
 	}
 
-	function tryToOpen() {
+	async function tryToOpen() {
 		if (isListboxOpen || disabled) return;
 
 		const canContinue = dispatch('before-open', undefined, { cancelable: true });
 		if (!canContinue) return;
 
 		isListboxOpen = true;
+		await tick();
 	}
 
 	function close() {
@@ -234,7 +235,7 @@
 				switch (event.key) {
 					case 'ArrowDown':
 					case 'ArrowUp':
-						tryToOpen();
+						await tryToOpen();
 
 						if (event.altKey) {
 							if (event.key === 'ArrowUp') close();
@@ -289,7 +290,7 @@
 				break;
 
 			default: {
-				tryToOpen();
+				await tryToOpen();
 
 				timedFilter.addChar(event.key);
 				const optionToActivate =
