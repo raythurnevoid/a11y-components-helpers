@@ -1,4 +1,4 @@
-export async function fetchOptions() {
+export async function fetchOptions(delay: number = 200) {
 	return new Promise<Response>((resolve) => {
 		setTimeout(() => {
 			if (options.length === 0) {
@@ -6,7 +6,7 @@ export async function fetchOptions() {
 			}
 
 			resolve(new Response(JSON.stringify(options), { status: 200 }));
-		}, 200);
+		}, delay);
 	});
 }
 

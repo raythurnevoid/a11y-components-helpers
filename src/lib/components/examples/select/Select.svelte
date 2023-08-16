@@ -1,7 +1,6 @@
 <script lang="ts" context="module">
 	let count: number = 0;
 
-	type OptionsAreReady = boolean;
 	type ActiveOption = string | null | undefined;
 
 	export { default as SelectOption } from './SelectOption.svelte';
@@ -15,7 +14,7 @@
 
 <script lang="ts">
 	import { createEventDispatcher, tick, setContext } from 'svelte';
-	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
+	import { InputBackgroundTimedFilter } from '$lib/input-background-timed-filter.js';
 	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
 	import { scrollIntoView } from '$lib/scroll-into-view.js';
 
@@ -26,9 +25,8 @@
 	export let disabled: boolean = false;
 	export let readonly: boolean = false;
 
-	export let computeOptions: () => Promise<OptionsAreReady> | OptionsAreReady = () => true;
-
 	const dispatch = createEventDispatcher<{
+		'before-open': void;
 		change: { value: string };
 		input: { value: string };
 	}>();
@@ -53,7 +51,7 @@
 	let optionToElMap = new Map<string, HTMLLIElement>();
 
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const timedFilter = new InputOptionsTimedFilter();
+	const timedFilter = new InputBackgroundTimedFilter();
 
 	setContext<SelectContext>('select', {
 		value$: readonlyStore(value$),
@@ -61,8 +59,8 @@
 		handleOptionClick
 	});
 
-	async function scrollOptionIntoView(input: { option: string }) {
-		const optionEl = optionToElMap.get(input.option)!;
+	async function scrollOptionIntoView(option: string) {
+		const optionEl = optionToElMap.get(option)!;
 		await scrollIntoView(listboxEl, optionEl);
 	}
 
@@ -103,32 +101,18 @@
 		}
 	}
 
-	async function tryToOpen(options?: { scrollActiveOptionIntoView: boolean }): Promise<boolean> {
-		if (isListboxOpen) return true;
-		else if (readonly || disabled) return false;
+	function tryToOpen() {
+		if (isListboxOpen || disabled) return;
+
+		const canContinue = dispatch('before-open', undefined, { cancelable: true });
+		if (!canContinue) return;
 
 		isListboxOpen = true;
-		return await callComputeOptionsFn(options);
 	}
 
 	function close() {
 		$activeOption$ = null;
 		isListboxOpen = false;
-	}
-
-	async function callComputeOptionsFn(options?: {
-		scrollActiveOptionIntoView?: boolean;
-	}): Promise<boolean> {
-		const result = await computeOptions();
-		if (!result) {
-			return false;
-		}
-
-		await tick();
-
-		handleDomChanges(options);
-
-		return true;
 	}
 
 	function setActiveOption(newActiveOption: string | null, options?: { scrollIntoView?: boolean }) {
@@ -137,18 +121,16 @@
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	function handleDomChanges(thisOptions?: {
-		areOptionsUnchanged?: boolean;
-		scrollActiveOptionIntoView?: boolean;
-	}) {
+	export function handleDomChanges(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
 		optionToElMap.clear();
 		let optionToActivate: string | null = null;
 
 		options = Array.from(
-			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not(aria-disabled)')
+			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not([aria-disabled])')
 		).map((el) => {
 			const optionValue = el.getAttribute('data-value')!;
 			optionToElMap.set(optionValue, el as HTMLLIElement);
+
 			if (value === optionValue) optionToActivate = optionValue;
 			return optionValue;
 		});
@@ -164,7 +146,7 @@
 		options?: { scrollIntoView?: boolean }
 	) {
 		if (!activeOption) return;
-		if (options?.scrollIntoView) scrollOptionIntoView({ option: activeOption });
+		if (options?.scrollIntoView) scrollOptionIntoView(activeOption);
 	}
 
 	function handleBlur(event: FocusEvent) {
@@ -187,10 +169,12 @@
 		commitValue();
 	}
 
-	function handleButtonClick() {
-		tryToOpen({
-			scrollActiveOptionIntoView: true
-		});
+	async function handleComboboxClick() {
+		if (!isListboxOpen) {
+			tryToOpen();
+		} else {
+			close();
+		}
 	}
 
 	async function handleButtonKeyDown(event: KeyboardEvent) {
@@ -237,11 +221,10 @@
 						commitValue();
 					}
 				} else {
-					await tryToOpen({
-						scrollActiveOptionIntoView: true
-					});
+					tryToOpen();
 				}
 				break;
+
 			case 'ArrowDown':
 			case 'ArrowUp':
 			case 'Home':
@@ -251,16 +234,12 @@
 				switch (event.key) {
 					case 'ArrowDown':
 					case 'ArrowUp':
-						if (!(await tryToOpen())) {
-							break;
-						}
+						tryToOpen();
 
 						if (event.altKey) {
 							if (event.key === 'ArrowUp') close();
 							break;
 						}
-					default:
-						if (!isListboxOpen) break;
 				}
 
 				let optionToActivate: string | null | undefined = undefined;
@@ -310,9 +289,7 @@
 				break;
 
 			default: {
-				if (!(await tryToOpen())) {
-					break;
-				}
+				tryToOpen();
 
 				timedFilter.addChar(event.key);
 				const optionToActivate =
@@ -350,10 +327,10 @@
 			aria-labelledby={labelId}
 			aria-readonly={readonly}
 			aria-expanded={isListboxOpen}
-			aria-controls="Select__listbox"
+			aria-controls={listboxId}
 			aria-activedescendant={$activeOption$ ? optionToElMap.get($activeOption$)?.id ?? '' : ''}
 			on:keydown={handleButtonKeyDown}
-			on:click={handleButtonClick}
+			on:click={handleComboboxClick}
 			on:change={handleChange}
 			on:blur={handleBlur}
 		>

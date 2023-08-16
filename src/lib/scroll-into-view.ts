@@ -1,11 +1,11 @@
-const observersMap = new WeakMap<HTMLElement, IntersectionObserver>();
-const pendingMap = new WeakMap<HTMLElement, [() => void, HTMLElement]>();
+const scrollIntoViewObserversMap = new WeakMap<HTMLElement, IntersectionObserver>();
+const scrollIntoViewPendingMap = new WeakMap<HTMLElement, [() => void, HTMLElement]>();
 
 export async function scrollIntoView(root: HTMLElement, el: HTMLElement) {
 	if ('scrollIntoViewIfNeeded' in el) {
 		(el as any).scrollIntoViewIfNeeded(false);
 	} else {
-		let intersectionObserver = observersMap.get(root);
+		let intersectionObserver = scrollIntoViewObserversMap.get(root);
 
 		if (!intersectionObserver) {
 			intersectionObserver = new IntersectionObserver(
@@ -18,7 +18,7 @@ export async function scrollIntoView(root: HTMLElement, el: HTMLElement) {
 							});
 						}
 						intersectionObserver?.unobserve(target);
-						pendingMap.get(root)![0]!();
+						scrollIntoViewPendingMap.get(root)![0]!();
 					});
 				},
 				{
@@ -27,17 +27,17 @@ export async function scrollIntoView(root: HTMLElement, el: HTMLElement) {
 				}
 			);
 
-			observersMap.set(root, intersectionObserver);
+			scrollIntoViewObserversMap.set(root, intersectionObserver);
 		}
 
 		return new Promise<void>((resolve) => {
-			const pending = pendingMap.get(root);
+			const pending = scrollIntoViewPendingMap.get(root);
 			const currentCb = pending?.[0];
 			const currentTarget = pending?.[1];
 
-			pendingMap.set(root, [
+			scrollIntoViewPendingMap.set(root, [
 				() => {
-					pendingMap.delete(root);
+					scrollIntoViewPendingMap.delete(root);
 					currentCb?.();
 					resolve();
 				},

@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
+	import { InputBackgroundTimedFilter } from '$lib/input-background-timed-filter.js';
 	import { createEventDispatcher, onMount } from 'svelte';
 	import ElementInViewChecker from '../../../ElementInViewChecker.js';
 
@@ -34,7 +34,7 @@
 
 	let activeOption: string | null | undefined = undefined;
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new InputOptionsTimedFilter();
+	const temporaryFilter = new InputBackgroundTimedFilter();
 
 	let elementInViewChecker: ElementInViewChecker;
 

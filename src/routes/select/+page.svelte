@@ -1,13 +1,14 @@
 <script lang="ts">
 	import * as api from './suggestions.js';
 	import Select, { SelectOption } from '$lib/components/examples/select/Select.svelte';
+	import { onMount, tick } from 'svelte';
 
+	let selectComp: Select;
 	let options: string[] | undefined = undefined;
 
 	let errorMessage: string | null = null;
 	let loading: boolean = false;
-
-	async function computeOptions() {
+	onMount(async () => {
 		try {
 			if (options) return true;
 
@@ -15,7 +16,7 @@
 
 			loading = true;
 
-			const response = await api.fetchOptions();
+			const response = await api.fetchOptions(2000);
 			if (response.status === 404) {
 				loading = false;
 				throw new Error('No results found');
@@ -30,19 +31,19 @@
 			options = responseBody;
 			loading = false;
 
-			return true;
+			tick().then(() => {
+				selectComp.handleDomChanges();
+			});
 		} catch (e) {
 			const error = e as Error;
 			errorMessage = error.message;
 			loading = false;
-
-			return false;
 		}
-	}
+	});
 </script>
 
 <main>
-	<Select label="State" {computeOptions}>
+	<Select bind:this={selectComp} label="State">
 		{#if errorMessage}
 			<li role="option" aria-selected="false" aria-disabled>{errorMessage}</li>
 		{:else if loading}

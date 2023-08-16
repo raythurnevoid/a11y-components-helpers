@@ -1,6 +1,6 @@
 import { findOptionToActivateWithFilter } from './find-option-to-activate-with-filter.js';
 
-export class InputOptionsTimedFilter {
+export class InputBackgroundTimedFilter {
 	#filter: string = '';
 	#timeout: ReturnType<typeof setTimeout> | null = null;
 

@@ -16,7 +16,7 @@
 
 <script lang="ts">
 	import { createEventDispatcher, setContext, tick } from 'svelte';
-	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
+	import { InputBackgroundTimedFilter } from '$lib/input-background-timed-filter.js';
 	import TreeviewItem from './TreeviewItem.svelte';
 
 	let el: HTMLElement;
@@ -87,7 +87,7 @@
 	let itemPathMap = new Map<TreeviewItemI, ItemPath>();
 	let itemAncestryMap = new Map<TreeviewItemI, TreeviewItemI[]>();
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new InputOptionsTimedFilter();
+	const temporaryFilter = new InputBackgroundTimedFilter();
 	const flatItems = (function mapItems(
 		items: TreeviewItemI[],
 		path: number[] = [],

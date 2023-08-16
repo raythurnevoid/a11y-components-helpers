@@ -7,7 +7,7 @@
 
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { InputOptionsTimedFilter } from '$lib/input-options-timed-filter.js';
+	import { InputBackgroundTimedFilter } from '$lib/input-background-timed-filter.js';
 	import MenuBarItem from './MenuBarItem.svelte';
 
 	let el: HTMLElement;
@@ -73,7 +73,7 @@
 	let activeItem: MenuItem | undefined = menuBar.at(0);
 	let canMenuAutoOpen = false;
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
-	const temporaryFilter = new InputOptionsTimedFilter();
+	const temporaryFilter = new InputBackgroundTimedFilter();
 
 	(function mapItemsId(items: MenuItem[], path: number[] = [], ancestors: MenuItem[] = []) {
 		items.forEach((item, i) => {

@@ -23,7 +23,7 @@
 	data-value={value}
 	role="option"
 	aria-selected={$activeOption$ === value}
-	aria-disabled={disabled}
+	aria-disabled={disabled || undefined}
 	on:click={(e) => handleOptionClick(e.currentTarget)}
 >
 	{value}
