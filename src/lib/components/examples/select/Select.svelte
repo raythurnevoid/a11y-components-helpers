@@ -1,14 +1,15 @@
 <script lang="ts" context="module">
 	let count: number = 0;
 
-	type ActiveOption = string | null | undefined;
+	type ActiveOption = HTMLElement | null | undefined;
+	type OptionValue = string;
 
 	export { default as SelectOption } from './SelectOption.svelte';
 
 	export interface SelectContext {
 		value$: Readable<string>;
 		activeOption$: Readable<ActiveOption>;
-		handleOptionClick: (optionEl: HTMLLIElement) => void;
+		handleOptionClick: (optionEl: HTMLElement) => void;
 	}
 </script>
 
@@ -47,8 +48,9 @@
 
 	let activeOption$: Writable<ActiveOption> = writable(undefined);
 
-	let options: string[] = [];
-	let optionToElMap = new Map<string, HTMLLIElement>();
+	let options: HTMLElement[] = [];
+	let optionValueToElMap = new Map<string, HTMLElement>();
+	let optionsValues: OptionValue[] = [];
 
 	const printableCharRegex = /^[a-zA-Z0-9]$/;
 	const timedFilter = new InputBackgroundTimedFilter();
@@ -59,8 +61,7 @@
 		handleOptionClick
 	});
 
-	async function scrollOptionIntoView(option: string) {
-		const optionEl = optionToElMap.get(option)!;
+	async function scrollOptionIntoView(optionEl: HTMLElement) {
 		await scrollIntoView(listboxEl, optionEl);
 	}
 
@@ -85,12 +86,27 @@
 	}
 
 	function setValue(newValue: string) {
-		canCommitValue = true;
-		value = newValue;
-		setActiveOption(value || null);
+		if (value !== newValue) {
+			canCommitValue = true;
+			value = newValue;
+		}
+
+		setActiveOption(findOption({ value }) ?? null);
 	}
 
-	function commitValue() {
+	function setValueFromOptionEl(optionEl: HTMLElement) {
+		setValue(getValueFromOption(optionEl));
+	}
+
+	function getValueFromOption(optionEl: HTMLElement) {
+		return optionEl.getAttribute('data-value')!;
+	}
+
+	function findOption(input: { value: string }) {
+		return options.find((option) => getValueFromOption(option) === input.value);
+	}
+
+	function tryToCommitValue() {
 		if (!canCommitValue) return;
 
 		let shouldDispatchChange = oldValue !== value;
@@ -116,26 +132,38 @@
 		isListboxOpen = false;
 	}
 
-	function setActiveOption(newActiveOption: string | null, options?: { scrollIntoView?: boolean }) {
+	function setActiveOption(
+		newActiveOption: HTMLElement | null,
+		options?: { scrollIntoView?: boolean }
+	) {
 		if ($activeOption$ === newActiveOption) return;
+
 		$activeOption$ = newActiveOption;
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	export function handleDomChanges(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
-		optionToElMap.clear();
-		let optionToActivate: string | null = null;
+	export function handleOptionsChange(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+		optionValueToElMap.clear();
+		options = [];
+		optionsValues = [];
 
-		options = Array.from(
-			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not([aria-disabled])')
-		).map((el) => {
-			const optionValue = el.getAttribute('data-value')!;
-			optionToElMap.set(optionValue, el as HTMLLIElement);
+		let optionToActivate: HTMLElement | null = null;
 
-			if (value === optionValue) optionToActivate = optionValue;
-			return optionValue;
-		});
-		optionToElMap = optionToElMap;
+		const optionsEl = listboxEl.querySelectorAll<HTMLElement>(
+			'li[role="option"][id][data-value]:not([aria-disabled])'
+		);
+		for (const optionEl of optionsEl) {
+			const optionValue = optionEl.getAttribute('data-value')!;
+			if (optionValueToElMap.has(optionValue)) {
+				optionValueToElMap.set(optionValue, optionEl);
+				optionsValues.push(optionValue);
+			}
+
+			if (value === optionValue) optionToActivate = optionEl;
+			options.push(optionEl);
+		}
+
+		optionValueToElMap = optionValueToElMap;
 
 		setActiveOption(optionToActivate, {
 			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
@@ -158,16 +186,16 @@
 		}
 
 		close();
-		commitValue();
+		tryToCommitValue();
 	}
 
-	function handleOptionClick(optionEl: HTMLLIElement) {
+	function handleOptionClick(optionEl: HTMLElement) {
 		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
 		setValue(optionEl.getAttribute('data-value')!);
 		close();
 		buttonEl.focus();
-		commitValue();
+		tryToCommitValue();
 	}
 
 	async function handleComboboxClick() {
@@ -217,9 +245,9 @@
 			case ' ':
 				if (isListboxOpen) {
 					if ($activeOption$ != null) {
-						setValue($activeOption$);
+						setValueFromOptionEl($activeOption$);
 						close();
-						commitValue();
+						tryToCommitValue();
 					}
 				} else {
 					tryToOpen();
@@ -243,7 +271,7 @@
 						}
 				}
 
-				let optionToActivate: string | null | undefined = undefined;
+				let optionToActivate: HTMLElement | null | undefined = undefined;
 
 				switch (event.key) {
 					case 'ArrowDown':
@@ -276,16 +304,14 @@
 					close();
 				} else if (value) {
 					setValue('');
-					commitValue();
+					tryToCommitValue();
 				}
 				break;
 
 			case 'Tab':
-				if ($activeOption$ != null && value !== $activeOption$) {
-					setValue($activeOption$);
-					close();
-					commitValue();
-				}
+				if ($activeOption$ != null) setValueFromOptionEl($activeOption$);
+				close();
+				tryToCommitValue();
 
 				break;
 
@@ -293,10 +319,17 @@
 				await tryToOpen();
 
 				timedFilter.addChar(event.key);
-				const optionToActivate =
-					timedFilter.find(options, $activeOption$, (option: string) =>
-						option.toLowerCase().startsWith(timedFilter.filter.toLowerCase())
-					) ?? $activeOption$;
+				const activeOptionValue = $activeOption$
+					? getValueFromOption($activeOption$)
+					: $activeOption$;
+				const optionValueOfOptionToActivate = timedFilter.find(
+					optionsValues,
+					activeOptionValue,
+					(option: string) => option.toLowerCase().startsWith(timedFilter.filter.toLowerCase())
+				);
+				const optionToActivate = optionValueOfOptionToActivate
+					? optionValueToElMap.get(optionValueOfOptionToActivate)!
+					: $activeOption$;
 
 				if (optionToActivate !== undefined) {
 					setActiveOption(optionToActivate, {
@@ -329,9 +362,7 @@
 			aria-readonly={readonly}
 			aria-expanded={isListboxOpen}
 			aria-controls={listboxId}
-			aria-activedescendant={isListboxOpen && $activeOption$
-				? optionToElMap.get($activeOption$)?.id ?? ''
-				: ''}
+			aria-activedescendant={isListboxOpen && $activeOption$ ? $activeOption$?.id ?? '' : ''}
 			on:keydown={handleButtonKeyDown}
 			on:click={handleComboboxClick}
 			on:change={handleChange}
