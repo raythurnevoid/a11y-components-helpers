@@ -87,6 +87,7 @@
 	function setValue(newValue: string) {
 		canCommitValue = true;
 		value = newValue;
+		setActiveOption(value || null);
 	}
 
 	function commitValue() {
@@ -112,7 +113,6 @@
 	}
 
 	function close() {
-		$activeOption$ = null;
 		isListboxOpen = false;
 	}
 
@@ -329,7 +329,9 @@
 			aria-readonly={readonly}
 			aria-expanded={isListboxOpen}
 			aria-controls={listboxId}
-			aria-activedescendant={$activeOption$ ? optionToElMap.get($activeOption$)?.id ?? '' : ''}
+			aria-activedescendant={isListboxOpen && $activeOption$
+				? optionToElMap.get($activeOption$)?.id ?? ''
+				: ''}
 			on:keydown={handleButtonKeyDown}
 			on:click={handleComboboxClick}
 			on:change={handleChange}
