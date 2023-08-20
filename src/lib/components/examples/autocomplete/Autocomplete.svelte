@@ -1,15 +1,15 @@
 <script lang="ts" context="module">
 	let count: number = 0;
 
-	type OptionsAreReady = boolean;
-	type ActiveOption = string | null | undefined;
+	type ActiveOption = HTMLElement | null | undefined;
+	type OptionValue = string;
 
 	export { default as AutocompleteOption } from './AutocompleteOption.svelte';
 
 	export interface AutocompleteContext {
 		value$: Readable<string>;
 		activeOption$: Readable<ActiveOption>;
-		handleOptionClick: (optionEl: HTMLLIElement) => void;
+		handleOptionClick: (optionEl: HTMLElement) => void;
 	}
 </script>
 
@@ -17,8 +17,6 @@
 	import { createEventDispatcher, tick, setContext } from 'svelte';
 	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
 	import { scrollIntoView } from '$lib/scroll-into-view.js';
-	import { findOptionToActivateWithFilter } from '$lib/find-option-to-activate-with-filter.js';
-	import { debounce } from '$lib/debounce.js';
 
 	export let id: string = `Autocomplete-${count++}`;
 
@@ -28,14 +26,13 @@
 	export let disabled: boolean = false;
 	export let readonly: boolean = false;
 
-	export let computeOptions: (
-		filter: string | null
-	) => Promise<OptionsAreReady> | OptionsAreReady = () => true;
-
 	const dispatch = createEventDispatcher<{
 		'before-open': void;
 		change: { value: string };
 		input: { value: string };
+		'request-inline-completition': {
+			proceed: () => void;
+		};
 	}>();
 
 	let el: HTMLElement;
@@ -55,8 +52,8 @@
 
 	let activeOption$: Writable<ActiveOption> = writable(undefined);
 
-	let options: string[] = [];
-	let optionToElMap = new Map<string, HTMLLIElement>();
+	let options: HTMLElement[] = [];
+	let optionValueToElMap = new Map<string, HTMLElement>();
 
 	$: canShowInlineSuggestions = autocomplete === 'inline' || autocomplete === 'both';
 
@@ -66,8 +63,7 @@
 		handleOptionClick
 	});
 
-	async function scrollOptionIntoView(input: { option: string }) {
-		const optionEl = optionToElMap.get(input.option)!;
+	async function scrollOptionIntoView(optionEl: HTMLElement) {
 		await scrollIntoView(listboxEl, optionEl);
 	}
 
@@ -94,12 +90,24 @@
 	}
 
 	function setValue(newValue: string) {
-		canCommitValue = true;
-		comboboxEl.value = value = newValue;
-		comboboxEl.setSelectionRange(value.length, value.length);
+		if (value !== newValue) {
+			canCommitValue = true;
+			comboboxEl.value = value = newValue;
+			comboboxEl.setSelectionRange(value.length, value.length);
+		}
+
+		setActiveOption(optionValueToElMap.get(value) ?? null);
 	}
 
-	function commitValue() {
+	function setValueFromOptionEl(optionEl: HTMLElement) {
+		setValue(getValueFromOption(optionEl));
+	}
+
+	function getValueFromOption(optionEl: HTMLElement) {
+		return optionEl.getAttribute('data-value')!;
+	}
+
+	function tryToCommitValue() {
 		if (!canCommitValue) return;
 
 		let shouldDispatchChange = oldValue !== value;
@@ -111,91 +119,64 @@
 		}
 	}
 
-	async function openAndComputeOptions(thisOptions?: {
-		scrollActiveOptionIntoView: boolean;
-	}): Promise<boolean> {
-		if (isListboxOpen) return true;
-		else if (readonly || disabled || userExplicitlyClosed) return false;
+	async function tryToOpen() {
+		if (isListboxOpen || disabled || readonly || disabled) return;
 
-		if (
-			!dispatch('before-open', undefined, {
-				cancelable: true
-			})
-		) {
-			return false;
-		}
+		dispatch('before-open');
+
+		userExplicitlyClosed = false;
 
 		isListboxOpen = autocomplete !== 'inline' ? true : false;
-		await callComputeOptionsFn(thisOptions);
-		return true;
+		await tick();
 	}
 
 	function close() {
 		isListboxOpen = false;
 	}
 
-	async function callComputeOptionsFn(thisOptions?: {
-		scrollActiveOptionIntoView?: boolean;
-	}): Promise<boolean> {
-		const result = await computeOptions(autocomplete !== 'none' ? value : null);
-
-		if (!result) {
-			if (autocomplete === 'none') {
-				const optionToActivate =
-					findOptionToActivateWithFilter(options, $activeOption$, false, (option: string) =>
-						isOptionToActivate(option, value)
-					) ?? null;
-
-				if (optionToActivate !== undefined) {
-					setActiveOption(optionToActivate, {
-						scrollIntoView: thisOptions?.scrollActiveOptionIntoView
-					});
-				}
-			}
-
-			return false;
-		}
-
-		await tick();
-
-		handleDomChanges(thisOptions);
-
-		return true;
-	}
-
-	function setActiveOption(newActiveOption: string | null, options?: { scrollIntoView?: boolean }) {
+	function setActiveOption(
+		newActiveOption: HTMLElement | null,
+		options?: { scrollIntoView?: boolean }
+	) {
 		if ($activeOption$ === newActiveOption) return;
+
+		console.trace(newActiveOption);
+
 		$activeOption$ = newActiveOption;
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	function handleDomChanges(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
-		let optionToActivate: string | null = null;
+	export function handleOptionsChange(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+		optionValueToElMap.clear();
+		options = [];
 
-		optionToElMap.clear();
-		const optionToActivateValue = value ?? $activeOption$;
+		let optionToActivate: HTMLElement | null = null;
 
-		options = Array.from(
-			listboxEl.querySelectorAll('li[role="option"][id][data-value]:not(aria-disabled)')
-		).map((el) => {
-			const optionValue = el.getAttribute('data-value')!;
-			optionToElMap.set(optionValue, el as HTMLLIElement);
-
-			if (!optionToActivate && isOptionToActivate(optionValue, optionToActivateValue)) {
-				optionToActivate = optionValue;
+		const optionsEl = listboxEl.querySelectorAll<HTMLElement>(
+			'li[role="option"][id][data-value]:not([aria-disabled])'
+		);
+		for (const optionEl of optionsEl) {
+			const optionValue = optionEl.getAttribute('data-value')!;
+			if (!optionValueToElMap.has(optionValue)) {
+				optionValueToElMap.set(optionValue, optionEl);
 			}
 
-			return optionValue;
-		});
-		optionToElMap = optionToElMap;
+			if (
+				!optionToActivate &&
+				value &&
+				optionValue.toLocaleLowerCase().startsWith(value.toLocaleLowerCase())
+			) {
+				optionToActivate = optionEl;
+			}
+
+			options.push(optionEl);
+		}
+
+		optionValueToElMap = optionValueToElMap;
 
 		setActiveOption(optionToActivate, {
 			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
 		});
-	}
-
-	function isOptionToActivate(option: string, value: string) {
-		return !!value && option.toLocaleLowerCase().startsWith(value.toLocaleLowerCase());
 	}
 
 	function handleActiveOptionChange(
@@ -203,7 +184,7 @@
 		options?: { scrollIntoView?: boolean }
 	) {
 		if (!activeOption) return;
-		if (options?.scrollIntoView) scrollOptionIntoView({ option: activeOption });
+		if (options?.scrollIntoView) scrollOptionIntoView(activeOption);
 	}
 
 	function handleBlur(event: FocusEvent) {
@@ -213,18 +194,19 @@
 			return comboboxEl.focus();
 		}
 
-		userBlurredWithTab = userExplicitlyClosed = false;
+		userExplicitlyClosed = userBlurredWithTab = false;
 		close();
-		commitValue();
+		tryToCommitValue();
 	}
 
-	function handleOptionClick(optionEl: HTMLLIElement) {
+	function handleOptionClick(optionEl: HTMLElement) {
 		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
-		setValue(optionEl.getAttribute('data-value')!);
+		setValueFromOptionEl(optionEl);
+		userExplicitlyClosed = false;
 		close();
 		comboboxEl.focus();
-		commitValue();
+		tryToCommitValue();
 	}
 
 	function handleButtonClick() {
@@ -232,14 +214,16 @@
 		handleComboboxClick();
 	}
 
-	function handleComboboxClick() {
-		userExplicitlyClosed = false;
-		openAndComputeOptions({
-			scrollActiveOptionIntoView: true
-		});
+	async function handleComboboxClick() {
+		if (!isListboxOpen) {
+			tryToOpen();
+		} else {
+			userExplicitlyClosed = true;
+			close();
+		}
 	}
 
-	async function handleComboboxKeyDown(event: KeyboardEvent) {
+	function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
 		if (target !== comboboxEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
@@ -273,43 +257,35 @@
 			case 'Enter':
 				if (isListboxOpen) {
 					if ($activeOption$ != null) {
-						setValue($activeOption$);
+						setValueFromOptionEl($activeOption$);
+						userExplicitlyClosed = false;
 						close();
-						commitValue();
+						tryToCommitValue();
 					}
 				} else {
-					userExplicitlyClosed = false;
-					await openAndComputeOptions({
-						scrollActiveOptionIntoView: true
-					});
+					tryToOpen();
 				}
 				break;
+
 			case 'ArrowDown':
 			case 'ArrowUp':
 			case 'Home':
 			case 'End':
 			case 'PageUp':
 			case 'PageDown': {
-				switch (event.key) {
-					case 'ArrowDown':
-					case 'ArrowUp':
-						userExplicitlyClosed = false;
-						if (!openAndComputeOptions()) {
-							break;
-						}
-					default:
-						if (!isListboxOpen) break;
-				}
-
 				if (event.altKey) {
-					if (event.key === 'ArrowUp') {
+					if (isListboxOpen && event.key === 'ArrowUp') {
 						userExplicitlyClosed = true;
 						close();
+						break;
+					} else if (!isListboxOpen && event.key === 'ArrowDown') {
+						tryToOpen();
 					}
-					break;
+				} else if (!isListboxOpen && !userExplicitlyClosed) {
+					tryToOpen();
 				}
 
-				let optionToActivate: string | null | undefined = undefined;
+				let optionToActivate: HTMLElement | null | undefined = undefined;
 
 				switch (event.key) {
 					case 'ArrowDown':
@@ -329,12 +305,12 @@
 				}
 
 				if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
-					setActiveOption(optionToActivate, {
-						scrollIntoView: true
-					});
-
 					if (canShowInlineSuggestions) {
-						setValue($activeOption$ ?? '');
+						optionToActivate ? setValueFromOptionEl(optionToActivate) : setValue('');
+					} else {
+						setActiveOption(optionToActivate, {
+							scrollIntoView: true
+						});
 					}
 				}
 
@@ -347,33 +323,30 @@
 					close();
 				} else if (value) {
 					setValue('');
-					commitValue();
+					tryToCommitValue();
 				}
 				break;
 
 			case 'Tab':
 				userBlurredWithTab = true;
-				if ($activeOption$ != null && value !== $activeOption$) {
-					setValue($activeOption$);
-					close();
-					commitValue();
-				}
+				if ($activeOption$ != null) setValueFromOptionEl($activeOption$);
+				userExplicitlyClosed = false;
+				close();
+				tryToCommitValue();
 
 				break;
 		}
 	}
 
-	async function handleComboboxInput(e: Event) {
-		const checkIfHasOverlap = await debounce({ key: handleComboboxInput });
-
+	function handleComboboxInput(e: Event) {
 		const event = e as InputEvent;
+		value = comboboxEl.value;
 
 		dispatch('input', {
 			value
 		});
 
 		canCommitValue = true;
-		value = comboboxEl.value;
 
 		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			event.preventDefault();
@@ -381,25 +354,19 @@
 			return;
 		}
 
-		if (isListboxOpen || autocomplete === 'inline') {
-			await callComputeOptionsFn({
-				scrollActiveOptionIntoView: true
-			});
-		} else if (
-			!userExplicitlyClosed &&
-			!(await openAndComputeOptions({
-				scrollActiveOptionIntoView: true
-			}))
-		) {
-			return;
+		if (!isListboxOpen && !userExplicitlyClosed && autocomplete !== 'inline') {
+			tryToOpen();
 		}
 
-		if (checkIfHasOverlap()) return;
-
-		if (canShowInlineSuggestions && $activeOption$ && event.inputType.startsWith('insert')) {
-			const selectionStart = value.length;
-			comboboxEl.value = value = $activeOption$ ?? '';
-			comboboxEl.setSelectionRange(selectionStart, value.length);
+		if (canShowInlineSuggestions && event.inputType.startsWith('insert')) {
+			dispatch('request-inline-completition', {
+				proceed: () => {
+					if (!$activeOption$ || !isListboxOpen) return;
+					const selectionStart = value.length;
+					comboboxEl.value = value = getValueFromOption($activeOption$);
+					comboboxEl.setSelectionRange(selectionStart, value.length);
+				}
+			});
 		}
 	}
 
@@ -427,9 +394,7 @@
 				aria-autocomplete={autocomplete}
 				aria-expanded={isListboxOpen}
 				aria-controls="Autocomplete__listbox"
-				aria-activedescendant={isListboxOpen && $activeOption$
-					? optionToElMap.get($activeOption$)?.id ?? ''
-					: ''}
+				aria-activedescendant={isListboxOpen && $activeOption$ ? $activeOption$?.id ?? '' : ''}
 				on:input={handleComboboxInput}
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleButtonClick}

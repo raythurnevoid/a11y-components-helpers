@@ -11,19 +11,22 @@
 	export let value: string;
 	export let disabled: boolean = false;
 
+	let el: HTMLElement;
+
 	const { activeOption$, value$, handleOptionClick } = getContext<AutocompleteContext>('select');
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <li
+	bind:this={el}
 	{id}
 	class="Autocomplete"
-	class:Autocomplete--active={$activeOption$ === value}
+	class:Autocomplete--active={$activeOption$ === el}
 	class:Autocomplete--selected={$value$ === value}
 	data-value={value}
 	role="option"
-	aria-selected={$activeOption$ === value}
-	aria-disabled={disabled}
+	aria-selected={$activeOption$ === el}
+	aria-disabled={disabled || undefined}
 	on:click={(e) => handleOptionClick(e.currentTarget)}
 >
 	{value}

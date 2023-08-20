@@ -4,6 +4,9 @@
 		AutocompleteOption
 	} from '$lib/components/examples/autocomplete/Autocomplete.svelte';
 	import { debounce } from '../../lib/debounce.js';
+	import { tick } from 'svelte';
+
+	let autocompleteComp: Autocomplete;
 
 	let value: string = '';
 	let selectedValue: string = value;
@@ -13,45 +16,61 @@
 	let errorMessage: string | null = null;
 	let loading: boolean = false;
 
-	async function computeOptions(filter: string | null) {
-		try {
-			if (filter === cachedFilter) return false;
+	let computeOptionsIsRunning: boolean = false;
+	let computeOptionsPromise: Promise<boolean> | null = null;
 
-			errorMessage = null;
+	async function computeOptions(filter: string | null): Promise<boolean> {
+		computeOptionsIsRunning = true;
 
-			loading = true;
+		computeOptionsPromise = new Promise(async (resolve) => {
+			try {
+				if (filter === cachedFilter) return resolve(false);
 
-			const checkIfOverlap = await debounce({
-				key: computeOptions,
-				delay: 300
-			});
+				errorMessage = null;
 
-			const response = await api.fetchSuggestions(filter ?? '');
-			if (checkIfOverlap()) return false;
+				loading = true;
 
-			if (response.status === 404) {
-				loading = false;
-				throw new Error('No results found');
-			} else if (response.status >= 500) {
-				throw new Error('Error fetching results', {
-					cause: response.body
+				const checkIfOverlap = await debounce({
+					key: computeOptions,
+					delay: 300
 				});
+
+				const response = await api.fetchSuggestions(filter ?? '');
+				if (checkIfOverlap()) return resolve(false);
+
+				if (response.status === 404) {
+					throw new Error('No results found');
+				} else if (response.status >= 500) {
+					throw new Error('Error fetching results', {
+						cause: response.body
+					});
+				}
+
+				const responseBody = await response.json();
+
+				cachedFilter = filter;
+				suggestions = responseBody;
+			} catch (e) {
+				const error = e as Error;
+				errorMessage = error.message;
 			}
 
-			const responseBody = await response.json();
+			return handleCompletition();
 
-			loading = false;
-			cachedFilter = filter;
-			suggestions = responseBody;
+			async function handleOptionsChange() {
+				await tick();
+				autocompleteComp.handleOptionsChange();
+			}
 
-			return responseBody.length > 1;
-		} catch (e) {
-			const error = e as Error;
-			errorMessage = error.message;
-			loading = false;
+			async function handleCompletition() {
+				computeOptionsIsRunning = false;
+				loading = false;
+				await handleOptionsChange();
+				resolve(true);
+			}
+		});
 
-			return false;
-		}
+		return computeOptionsPromise;
 	}
 
 	function handleChange(event: Autocomplete['$$events_def']['change']) {
@@ -62,17 +81,33 @@
 		if (selectedValue && selectedValue === value) {
 			event.preventDefault();
 		}
+
+		if (!computeOptionsIsRunning) computeOptions(value);
+	}
+
+	function handleInput() {
+		computeOptions(value);
+	}
+
+	function handleInlineCompletitionRequest(
+		event: Autocomplete['$$events_def']['request-inline-completition']
+	) {
+		computeOptionsPromise?.then((canContinue) => {
+			if (canContinue) event.detail.proceed();
+		});
 	}
 </script>
 
 <main>
 	<Autocomplete
+		bind:this={autocompleteComp}
 		bind:value
 		label="State"
 		autocomplete="both"
-		{computeOptions}
 		on:before-open={handleBeforeOpen}
 		on:change={handleChange}
+		on:input={handleInput}
+		on:request-inline-completition={handleInlineCompletitionRequest}
 	>
 		{#if errorMessage}
 			<li role="option" aria-selected="false" aria-disabled>{errorMessage}</li>
