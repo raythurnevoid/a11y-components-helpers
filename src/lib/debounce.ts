@@ -1,3 +1,5 @@
+import { delay } from "./delay.js";
+
 const cancelMap = new WeakMap<object, DebounceState>();
 
 /**
@@ -27,7 +29,7 @@ export function debounce(options: {
 		cancelMap.set(key, state);
 
 		if (options.delay) {
-			waitFor({ delay: options.delay }).then(() => {
+			delay(options.delay).then(() => {
 				resolve(() => state.hasOverlap);
 			});
 		} else {
@@ -46,20 +48,4 @@ interface DebounceState {
 
 export type HasOverlap = boolean;
 
-export async function waitFor(
-	options:
-		| {
-				dependency: () => Promise<CanContinue>;
-		  }
-		| {
-				delay: number;
-		  }
-) {
-	if ('dependency' in options) {
-		while (!(await options.dependency())) {}
-	} else if ('delay' in options) {
-		await new Promise((resolve) => setTimeout(resolve, options.delay));
-	}
-}
 
-export type CanContinue = boolean;
