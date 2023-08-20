@@ -40,6 +40,8 @@
 	let inputId = `${id}__input`;
 
 	let isListboxOpen: boolean = false;
+	let userExplicitlyClosed: boolean = false;
+	let userBlurredWithTab: boolean = false;
 
 	let value$ = writable<string>(value);
 	$: $value$ = value;
@@ -91,7 +93,7 @@
 			value = newValue;
 		}
 
-		setActiveOption(findOption({ value }) ?? null);
+		setActiveOption(optionValueToElMap.get(value) ?? null);
 	}
 
 	function setValueFromOptionEl(optionEl: HTMLElement) {
@@ -100,10 +102,6 @@
 
 	function getValueFromOption(optionEl: HTMLElement) {
 		return optionEl.getAttribute('data-value')!;
-	}
-
-	function findOption(input: { value: string }) {
-		return options.find((option) => getValueFromOption(option) === input.value);
 	}
 
 	function tryToCommitValue() {
@@ -121,8 +119,9 @@
 	async function tryToOpen() {
 		if (isListboxOpen || disabled) return;
 
-		const canContinue = dispatch('before-open', undefined, { cancelable: true });
-		if (!canContinue) return;
+		dispatch('before-open');
+
+		userExplicitlyClosed = false;
 
 		isListboxOpen = true;
 		await tick();
@@ -154,7 +153,7 @@
 		);
 		for (const optionEl of optionsEl) {
 			const optionValue = optionEl.getAttribute('data-value')!;
-			if (optionValueToElMap.has(optionValue)) {
+			if (!optionValueToElMap.has(optionValue)) {
 				optionValueToElMap.set(optionValue, optionEl);
 				optionsValues.push(optionValue);
 			}
@@ -181,10 +180,11 @@
 	function handleBlur(event: FocusEvent) {
 		if (!isListboxOpen || !document.hasFocus() || el.contains(event.relatedTarget as HTMLElement)) {
 			return;
-		} else if (el.querySelector(':scope:hover, :hover')) {
+		} else if (!userBlurredWithTab && el.querySelector(':scope:hover, :hover')) {
 			return buttonEl.focus();
 		}
 
+		userExplicitlyClosed = userBlurredWithTab = false;
 		close();
 		tryToCommitValue();
 	}
@@ -192,7 +192,8 @@
 	function handleOptionClick(optionEl: HTMLElement) {
 		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
-		setValue(optionEl.getAttribute('data-value')!);
+		setValueFromOptionEl(optionEl);
+		userExplicitlyClosed = false;
 		close();
 		buttonEl.focus();
 		tryToCommitValue();
@@ -202,6 +203,7 @@
 		if (!isListboxOpen) {
 			tryToOpen();
 		} else {
+			userExplicitlyClosed = true;
 			close();
 		}
 	}
@@ -246,6 +248,7 @@
 				if (isListboxOpen) {
 					if ($activeOption$ != null) {
 						setValueFromOptionEl($activeOption$);
+						userExplicitlyClosed = false;
 						close();
 						tryToCommitValue();
 					}
@@ -260,15 +263,16 @@
 			case 'End':
 			case 'PageUp':
 			case 'PageDown': {
-				switch (event.key) {
-					case 'ArrowDown':
-					case 'ArrowUp':
-						await tryToOpen();
-
-						if (event.altKey) {
-							if (event.key === 'ArrowUp') close();
-							break;
-						}
+				if (event.altKey) {
+					if (isListboxOpen && event.key === 'ArrowUp') {
+						userExplicitlyClosed = true;
+						close();
+						break;
+					} else if (!isListboxOpen && event.key === 'ArrowDown') {
+						tryToOpen();
+					}
+				} else if (!isListboxOpen && !userExplicitlyClosed) {
+					tryToOpen();
 				}
 
 				let optionToActivate: HTMLElement | null | undefined = undefined;
@@ -301,6 +305,7 @@
 
 			case 'Escape':
 				if (isListboxOpen) {
+					userExplicitlyClosed = true;
 					close();
 				} else if (value) {
 					setValue('');
@@ -309,14 +314,16 @@
 				break;
 
 			case 'Tab':
+				userBlurredWithTab = true;
 				if ($activeOption$ != null) setValueFromOptionEl($activeOption$);
+				userExplicitlyClosed = false;
 				close();
 				tryToCommitValue();
 
 				break;
 
 			default: {
-				await tryToOpen();
+				if (!isListboxOpen && !userExplicitlyClosed) await tryToOpen();
 
 				timedFilter.addChar(event.key);
 				const activeOptionValue = $activeOption$
