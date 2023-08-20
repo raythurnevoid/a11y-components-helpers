@@ -107,9 +107,9 @@
 	function tryToCommitValue() {
 		if (!canCommitValue) return;
 
-		let shouldDispatchChange = oldValue !== value;
+		let mustDispatchChange = oldValue !== value;
 
-		if (shouldDispatchChange) {
+		if (mustDispatchChange) {
 			oldValue = value;
 			dispatch('change', { value });
 			canCommitValue = false;
@@ -216,7 +216,9 @@
 		}
 
 		let isHandled = false;
-		let shouldPreventDefault = false;
+		let mustPreventDefault = false;
+		let mustTryToOpen = false;
+
 		switch (event.key) {
 			case 'Enter':
 			case ' ':
@@ -225,11 +227,11 @@
 			case 'Home':
 			case 'End':
 			case 'Escape':
-				isHandled = shouldPreventDefault = true;
+				isHandled = mustPreventDefault = true;
 				break;
 			case 'PageUp':
 			case 'PageDown':
-				isHandled = shouldPreventDefault = isListboxOpen;
+				isHandled = mustPreventDefault = isListboxOpen;
 				break;
 			case 'Tab':
 				isHandled = true;
@@ -239,8 +241,29 @@
 				break;
 		}
 
+		if (!isListboxOpen) {
+			switch (event.key) {
+				case 'Enter':
+				case 'ArrowDown':
+				case 'ArrowUp':
+				case 'PageUp':
+				case 'PageDown':
+				case 'Home':
+				case 'End':
+					if (
+						(!userExplicitlyClosed && event.key !== 'Enter') ||
+						(event.key === 'ArrowUp' && event.altKey)
+					) {
+						break;
+					} else mustTryToOpen = true;
+					break;
+				default:
+					if (isHandled) mustTryToOpen = !userExplicitlyClosed;
+			}
+		}
+
 		if (!isHandled) return;
-		if (shouldPreventDefault) event.preventDefault();
+		if (mustPreventDefault) event.preventDefault();
 
 		switch (event.key) {
 			case 'Enter':
@@ -252,8 +275,6 @@
 						close();
 						tryToCommitValue();
 					}
-				} else {
-					tryToOpen();
 				}
 				break;
 
@@ -267,12 +288,8 @@
 					if (isListboxOpen && event.key === 'ArrowUp') {
 						userExplicitlyClosed = true;
 						close();
-						break;
-					} else if (!isListboxOpen && event.key === 'ArrowDown') {
-						tryToOpen();
 					}
-				} else if (!isListboxOpen && !userExplicitlyClosed) {
-					tryToOpen();
+					break;
 				}
 
 				let optionToActivate: HTMLElement | null | undefined = undefined;
@@ -323,8 +340,6 @@
 				break;
 
 			default: {
-				if (!isListboxOpen && !userExplicitlyClosed) await tryToOpen();
-
 				timedFilter.addChar(event.key);
 				const activeOptionValue = $activeOption$
 					? getValueFromOption($activeOption$)
