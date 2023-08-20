@@ -24,6 +24,7 @@
 	export let label: string = '';
 	export let disabled: boolean = false;
 	export let readonly: boolean = false;
+	export let asyncOptions: boolean = false;
 
 	const dispatch = createEventDispatcher<{
 		'before-open': void;
@@ -31,13 +32,11 @@
 			waitForToProceed: (promise: Promise<void>) => void;
 		};
 		change: { value: string };
-		input: { value: string; notifyAsyncOptions: () => void };
-		keydown: {
-			notifyAsyncOptions: () => void;
-		};
+		input: { value: string };
 		'options-to-be-ready-request': {
 			proceed: () => void;
 		};
+		focus: void;
 	}>();
 
 	let el: HTMLElement;
@@ -61,40 +60,12 @@
 	let optionValueToElMap = new Map<string, HTMLElement>();
 
 	$: canShowInlineSuggestions = autocomplete === 'inline' || autocomplete === 'both';
+	$: canOpenListbox = autocomplete === 'list' || autocomplete === 'both';
 
 	setContext<AutocompleteContext>('select', {
 		value$: readonlyStore(value$),
 		activeOption$: readonlyStore(activeOption$),
 		handleOptionClick
-	});
-
-	const optionQuery = 'li[role="option"][id][data-value]:not([aria-disabled])';
-
-	onMount(() => {
-		const optionsMutationObs = new MutationObserver((mut) => {
-			const didOptionsChange = mut.some(
-				(m) =>
-					(m.type === 'childList' &&
-						[...Array.from(m.addedNodes.values()), ...Array.from(m.removedNodes.values())].some(
-							(n) => n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).matches(optionQuery)
-						)) ||
-					(m.type === 'attributes' &&
-						m.target.nodeType === Node.ELEMENT_NODE &&
-						(m.target as HTMLElement).matches(optionQuery))
-			);
-			console.log(didOptionsChange);
-		});
-
-		optionsMutationObs.observe(listboxEl, {
-			childList: true,
-			subtree: true,
-			attributes: true,
-			attributeFilter: ['aria-disabled', 'data-value', 'role']
-		});
-
-		return () => {
-			optionsMutationObs.disconnect();
-		};
 	});
 
 	async function scrollOptionIntoView(optionEl: HTMLElement) {
@@ -154,13 +125,13 @@
 	}
 
 	async function tryToOpen() {
-		if (isListboxOpen || disabled || readonly || disabled) return;
+		if (isListboxOpen || disabled || readonly || disabled || !canOpenListbox) {
+			return;
+		}
 
 		dispatch('before-open');
-
 		userExplicitlyClosed = false;
-
-		isListboxOpen = autocomplete !== 'inline' ? true : false;
+		isListboxOpen = true;
 		await tick();
 	}
 
@@ -178,9 +149,7 @@
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	export function handleOptionsChange(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
-		console.log('handleOptionsChange');
-
+	export function handleOptionsChange() {
 		optionValueToElMap.clear();
 		options = [];
 
@@ -209,7 +178,7 @@
 		optionValueToElMap = optionValueToElMap;
 
 		setActiveOption(optionToActivate, {
-			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
+			scrollIntoView: true
 		});
 	}
 
@@ -217,8 +186,13 @@
 		activeOption: ActiveOption,
 		options?: { scrollIntoView?: boolean }
 	) {
+		console.trace('handleActiveOptionChange', activeOption, options?.scrollIntoView);
 		if (!activeOption) return;
 		if (options?.scrollIntoView) scrollOptionIntoView(activeOption);
+	}
+
+	function handleFocus() {
+		dispatch('focus');
 	}
 
 	function handleBlur(event: FocusEvent) {
@@ -259,11 +233,6 @@
 
 	function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
-
-		let optionsAreAsync = false;
-		dispatch('keydown', {
-			notifyAsyncOptions: () => (optionsAreAsync = true)
-		});
 
 		if (target !== comboboxEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
 			return;
@@ -308,7 +277,6 @@
 
 		if (!isHandled) return;
 		if (mustPreventDefault) event.preventDefault();
-
 		if (mustTryToOpen) {
 			tryToOpen();
 		}
@@ -341,7 +309,7 @@
 
 				let optionToActivate: HTMLElement | null | undefined = undefined;
 
-				if (optionsAreAsync) {
+				if (asyncOptions) {
 					dispatch('options-to-be-ready-request' as const, {
 						proceed
 					});
@@ -368,12 +336,12 @@
 					}
 
 					if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
+						setActiveOption(optionToActivate, {
+							scrollIntoView: true
+						});
+
 						if (canShowInlineSuggestions) {
 							optionToActivate ? setValueFromOptionEl(optionToActivate) : setValue('');
-						} else {
-							setActiveOption(optionToActivate, {
-								scrollIntoView: true
-							});
 						}
 					}
 				}
@@ -406,10 +374,8 @@
 		const event = e as InputEvent;
 		value = comboboxEl.value;
 
-		let optionsAreAsync = false;
 		dispatch('input', {
-			value,
-			notifyAsyncOptions: () => (optionsAreAsync = true)
+			value
 		});
 
 		canCommitValue = true;
@@ -420,12 +386,10 @@
 			return;
 		}
 
-		if (!isListboxOpen && !userExplicitlyClosed && autocomplete !== 'inline') {
-			tryToOpen();
-		}
+		if (!userExplicitlyClosed) tryToOpen();
 
 		if (canShowInlineSuggestions && event.inputType.startsWith('insert')) {
-			if (optionsAreAsync) {
+			if (asyncOptions) {
 				dispatch('options-to-be-ready-request' as const, {
 					proceed
 				});
@@ -434,7 +398,7 @@
 			}
 
 			function proceed() {
-				if (!$activeOption$ || !isListboxOpen) return;
+				if (!$activeOption$ || document.activeElement !== comboboxEl) return;
 				const selectionStart = value.length;
 				comboboxEl.value = value = getValueFromOption($activeOption$);
 				comboboxEl.setSelectionRange(selectionStart, value.length);
@@ -453,6 +417,7 @@
 		<span>{label}</span>
 
 		<div class="Autocomplete__input-group">
+			<!-- svelte-ignore a11y-autocomplete-valid -->
 			<input
 				bind:this={comboboxEl}
 				id={inputId}
@@ -461,7 +426,7 @@
 				type="text"
 				{disabled}
 				{readonly}
-				autocomplete="off"
+				autocomplete="really-off"
 				role="combobox"
 				aria-autocomplete={autocomplete}
 				aria-expanded={isListboxOpen}
@@ -471,35 +436,38 @@
 				on:keydown={handleComboboxKeyDown}
 				on:click={handleButtonClick}
 				on:change={handleChange}
+				on:focus={handleFocus}
 				on:blur={handleBlur}
 			/>
 
-			<button
-				class="Autocomplete__button"
-				type="button"
-				tabindex="-1"
-				{disabled}
-				aria-label={label}
-				aria-expanded={isListboxOpen}
-				aria-controls={listboxId}
-				on:click={handleButtonClick}
-			>
-				<svg
-					width="18"
-					height="16"
-					aria-hidden="true"
-					focusable="false"
-					style="forced-color-adjust: auto"
+			{#if canOpenListbox}
+				<button
+					class="Autocomplete__button"
+					type="button"
+					tabindex="-1"
+					{disabled}
+					aria-label={label}
+					aria-expanded={isListboxOpen}
+					aria-controls={listboxId}
+					on:click={handleButtonClick}
 				>
-					<polygon
-						class="arrow"
-						stroke-width="0"
-						fill-opacity="0.75"
-						fill="currentcolor"
-						points="3,6 15,6 9,14"
-					/>
-				</svg>
-			</button>
+					<svg
+						width="18"
+						height="16"
+						aria-hidden="true"
+						focusable="false"
+						style="forced-color-adjust: auto"
+					>
+						<polygon
+							class="arrow"
+							stroke-width="0"
+							fill-opacity="0.75"
+							fill="currentcolor"
+							points="3,6 15,6 9,14"
+						/>
+					</svg>
+				</button>
+			{/if}
 		</div>
 	</label>
 

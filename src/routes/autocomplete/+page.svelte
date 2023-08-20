@@ -25,7 +25,7 @@
 
 		computeOptionsPromise = new Promise(async (resolve) => {
 			try {
-				if (filter === cachedFilter) return resolve(false);
+				if (filter === cachedFilter) return handleCompletition();
 
 				errorMessage = null;
 
@@ -78,7 +78,7 @@
 		selectedValue = suggestions?.find((suggestion) => suggestion === event.detail.value) ?? '';
 	}
 
-	function handleBeforeOpen(event: Autocomplete['$$events_def']['before-open']) {
+	function handleFocusOrBeforeOpen() {
 		if (!computeOptionsIsRunning) computeOptions(value);
 	}
 
@@ -110,7 +110,9 @@
 		bind:value
 		label="State"
 		autocomplete="both"
-		on:before-open={handleBeforeOpen}
+		asyncOptions
+		on:focus={handleFocusOrBeforeOpen}
+		on:before-open={handleFocusOrBeforeOpen}
 		on:open={handleOpen}
 		on:change={handleChange}
 		on:input={handleInput}
