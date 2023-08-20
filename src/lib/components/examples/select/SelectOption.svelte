@@ -11,18 +11,21 @@
 	export let value: string;
 	export let disabled: boolean = false;
 
+	let el: HTMLElement;
+
 	const { activeOption$, value$, handleOptionClick } = getContext<SelectContext>('select');
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <li
+	bind:this={el}
 	{id}
 	class="SelectOption"
-	class:SelectOption--active={$activeOption$ === value}
+	class:SelectOption--active={$activeOption$ === el}
 	class:SelectOption--selected={$value$ === value}
 	data-value={value}
 	role="option"
-	aria-selected={$activeOption$ === value}
+	aria-selected={$activeOption$ === el}
 	aria-disabled={disabled || undefined}
 	on:click={(e) => handleOptionClick(e.currentTarget)}
 >
