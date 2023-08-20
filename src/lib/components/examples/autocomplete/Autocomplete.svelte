@@ -2,7 +2,6 @@
 	let count: number = 0;
 
 	type ActiveOption = HTMLElement | null | undefined;
-	type OptionValue = string;
 
 	export { default as AutocompleteOption } from './AutocompleteOption.svelte';
 
@@ -14,7 +13,7 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher, tick, setContext } from 'svelte';
+	import { createEventDispatcher, tick, setContext, onMount } from 'svelte';
 	import { writable, readonly as readonlyStore, type Readable, type Writable } from 'svelte/store';
 	import { scrollIntoView } from '$lib/scroll-into-view.js';
 
@@ -28,9 +27,15 @@
 
 	const dispatch = createEventDispatcher<{
 		'before-open': void;
+		open: {
+			waitForToProceed: (promise: Promise<void>) => void;
+		};
 		change: { value: string };
-		input: { value: string };
-		'request-inline-completition': {
+		input: { value: string; notifyAsyncOptions: () => void };
+		keydown: {
+			notifyAsyncOptions: () => void;
+		};
+		'options-to-be-ready-request': {
 			proceed: () => void;
 		};
 	}>();
@@ -61,6 +66,35 @@
 		value$: readonlyStore(value$),
 		activeOption$: readonlyStore(activeOption$),
 		handleOptionClick
+	});
+
+	const optionQuery = 'li[role="option"][id][data-value]:not([aria-disabled])';
+
+	onMount(() => {
+		const optionsMutationObs = new MutationObserver((mut) => {
+			const didOptionsChange = mut.some(
+				(m) =>
+					(m.type === 'childList' &&
+						[...Array.from(m.addedNodes.values()), ...Array.from(m.removedNodes.values())].some(
+							(n) => n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).matches(optionQuery)
+						)) ||
+					(m.type === 'attributes' &&
+						m.target.nodeType === Node.ELEMENT_NODE &&
+						(m.target as HTMLElement).matches(optionQuery))
+			);
+			console.log(didOptionsChange);
+		});
+
+		optionsMutationObs.observe(listboxEl, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['aria-disabled', 'data-value', 'role']
+		});
+
+		return () => {
+			optionsMutationObs.disconnect();
+		};
 	});
 
 	async function scrollOptionIntoView(optionEl: HTMLElement) {
@@ -110,9 +144,9 @@
 	function tryToCommitValue() {
 		if (!canCommitValue) return;
 
-		let shouldDispatchChange = oldValue !== value;
+		let mustDispatchChange = oldValue !== value;
 
-		if (shouldDispatchChange) {
+		if (mustDispatchChange) {
 			oldValue = value;
 			dispatch('change', { value });
 			canCommitValue = false;
@@ -140,13 +174,13 @@
 	) {
 		if ($activeOption$ === newActiveOption) return;
 
-		console.trace(newActiveOption);
-
 		$activeOption$ = newActiveOption;
 		handleActiveOptionChange($activeOption$, options);
 	}
 
 	export function handleOptionsChange(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+		console.log('handleOptionsChange');
+
 		optionValueToElMap.clear();
 		options = [];
 
@@ -226,32 +260,58 @@
 	function handleComboboxKeyDown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 
+		let optionsAreAsync = false;
+		dispatch('keydown', {
+			notifyAsyncOptions: () => (optionsAreAsync = true)
+		});
+
 		if (target !== comboboxEl || event.ctrlKey || (event.shiftKey && event.key !== 'Tab')) {
 			return;
 		}
 
 		let isHandled = false;
-		let shouldPreventDefault = false;
+		let mustPreventDefault = false;
+		let mustTryToOpen = false;
+
 		switch (event.key) {
 			case 'Enter':
 			case 'ArrowDown':
 			case 'ArrowUp':
 			case 'Escape':
-				isHandled = shouldPreventDefault = true;
+				isHandled = mustPreventDefault = true;
 				break;
 			case 'PageUp':
 			case 'PageDown':
 			case 'Home':
 			case 'End':
-				isHandled = shouldPreventDefault = isListboxOpen;
+				isHandled = mustPreventDefault = isListboxOpen;
 				break;
 			case 'Tab':
 				isHandled = true;
 				break;
 		}
 
+		if (!isListboxOpen) {
+			switch (event.key) {
+				case 'Enter':
+				case 'ArrowDown':
+				case 'ArrowUp':
+				case 'PageUp':
+				case 'PageDown':
+				case 'Home':
+				case 'End':
+					if (event.key === 'ArrowUp' && event.altKey) break;
+					else mustTryToOpen = true;
+					break;
+			}
+		}
+
 		if (!isHandled) return;
-		if (shouldPreventDefault) event.preventDefault();
+		if (mustPreventDefault) event.preventDefault();
+
+		if (mustTryToOpen) {
+			tryToOpen();
+		}
 
 		switch (event.key) {
 			case 'Enter':
@@ -262,8 +322,6 @@
 						close();
 						tryToCommitValue();
 					}
-				} else {
-					tryToOpen();
 				}
 				break;
 
@@ -277,40 +335,46 @@
 					if (isListboxOpen && event.key === 'ArrowUp') {
 						userExplicitlyClosed = true;
 						close();
-						break;
-					} else if (!isListboxOpen && event.key === 'ArrowDown') {
-						tryToOpen();
 					}
-				} else if (!isListboxOpen && !userExplicitlyClosed) {
-					tryToOpen();
+					break;
 				}
 
 				let optionToActivate: HTMLElement | null | undefined = undefined;
 
-				switch (event.key) {
-					case 'ArrowDown':
-						optionToActivate = getNextOptionToActivate($activeOption$, 'next');
-						break;
-					case 'ArrowUp':
-						optionToActivate = getNextOptionToActivate($activeOption$, 'prev');
-						break;
-					case 'Home':
-					case 'PageUp':
-						optionToActivate = getNextOptionToActivate($activeOption$, 'first');
-						break;
-					case 'End':
-					case 'PageDown':
-						optionToActivate = getNextOptionToActivate($activeOption$, 'last');
-						break;
+				if (optionsAreAsync) {
+					dispatch('options-to-be-ready-request' as const, {
+						proceed
+					});
+				} else {
+					proceed();
 				}
 
-				if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
-					if (canShowInlineSuggestions) {
-						optionToActivate ? setValueFromOptionEl(optionToActivate) : setValue('');
-					} else {
-						setActiveOption(optionToActivate, {
-							scrollIntoView: true
-						});
+				function proceed() {
+					switch (event.key) {
+						case 'ArrowDown':
+							optionToActivate = getNextOptionToActivate($activeOption$, 'next');
+							break;
+						case 'ArrowUp':
+							optionToActivate = getNextOptionToActivate($activeOption$, 'prev');
+							break;
+						case 'Home':
+						case 'PageUp':
+							optionToActivate = getNextOptionToActivate($activeOption$, 'first');
+							break;
+						case 'End':
+						case 'PageDown':
+							optionToActivate = getNextOptionToActivate($activeOption$, 'last');
+							break;
+					}
+
+					if (optionToActivate !== undefined && $activeOption$ !== optionToActivate) {
+						if (canShowInlineSuggestions) {
+							optionToActivate ? setValueFromOptionEl(optionToActivate) : setValue('');
+						} else {
+							setActiveOption(optionToActivate, {
+								scrollIntoView: true
+							});
+						}
 					}
 				}
 
@@ -342,8 +406,10 @@
 		const event = e as InputEvent;
 		value = comboboxEl.value;
 
+		let optionsAreAsync = false;
 		dispatch('input', {
-			value
+			value,
+			notifyAsyncOptions: () => (optionsAreAsync = true)
 		});
 
 		canCommitValue = true;
@@ -359,14 +425,20 @@
 		}
 
 		if (canShowInlineSuggestions && event.inputType.startsWith('insert')) {
-			dispatch('request-inline-completition', {
-				proceed: () => {
-					if (!$activeOption$ || !isListboxOpen) return;
-					const selectionStart = value.length;
-					comboboxEl.value = value = getValueFromOption($activeOption$);
-					comboboxEl.setSelectionRange(selectionStart, value.length);
-				}
-			});
+			if (optionsAreAsync) {
+				dispatch('options-to-be-ready-request' as const, {
+					proceed
+				});
+			} else {
+				proceed();
+			}
+
+			function proceed() {
+				if (!$activeOption$ || !isListboxOpen) return;
+				const selectionStart = value.length;
+				comboboxEl.value = value = getValueFromOption($activeOption$);
+				comboboxEl.setSelectionRange(selectionStart, value.length);
+			}
 		}
 	}
 

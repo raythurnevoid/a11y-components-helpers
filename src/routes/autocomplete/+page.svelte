@@ -5,6 +5,7 @@
 	} from '$lib/components/examples/autocomplete/Autocomplete.svelte';
 	import { debounce } from '../../lib/debounce.js';
 	import { tick } from 'svelte';
+	import { createPromiseWithResolvers } from '../../lib/promise-with-resolvers.js';
 
 	let autocompleteComp: Autocomplete;
 
@@ -78,19 +79,24 @@
 	}
 
 	function handleBeforeOpen(event: Autocomplete['$$events_def']['before-open']) {
-		if (selectedValue && selectedValue === value) {
-			event.preventDefault();
-		}
-
 		if (!computeOptionsIsRunning) computeOptions(value);
+	}
+
+	async function handleOpen(event: Autocomplete['$$events_def']['open']) {
+		if (!computeOptionsIsRunning) return;
+
+		const promise = createPromiseWithResolvers<void>();
+		event.detail.waitForToProceed(promise.promise);
+		while (!(await computeOptionsPromise)) {}
+		promise.resolve();
 	}
 
 	function handleInput() {
 		computeOptions(value);
 	}
 
-	function handleInlineCompletitionRequest(
-		event: Autocomplete['$$events_def']['request-inline-completition']
+	function handleOptionsToBeReadyRequest(
+		event: Autocomplete['$$events_def']['options-to-be-ready-request']
 	) {
 		computeOptionsPromise?.then((canContinue) => {
 			if (canContinue) event.detail.proceed();
@@ -105,9 +111,10 @@
 		label="State"
 		autocomplete="both"
 		on:before-open={handleBeforeOpen}
+		on:open={handleOpen}
 		on:change={handleChange}
 		on:input={handleInput}
-		on:request-inline-completition={handleInlineCompletitionRequest}
+		on:options-to-be-ready-request={handleOptionsToBeReadyRequest}
 	>
 		{#if errorMessage}
 			<li role="option" aria-selected="false" aria-disabled>{errorMessage}</li>
