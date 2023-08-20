@@ -120,9 +120,7 @@
 		if (isListboxOpen || disabled) return;
 
 		dispatch('before-open');
-
 		userExplicitlyClosed = false;
-
 		isListboxOpen = true;
 		await tick();
 	}
@@ -264,6 +262,9 @@
 
 		if (!isHandled) return;
 		if (mustPreventDefault) event.preventDefault();
+		if (mustTryToOpen) {
+			tryToOpen();
+		}
 
 		switch (event.key) {
 			case 'Enter':
