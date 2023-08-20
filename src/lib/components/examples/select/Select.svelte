@@ -139,7 +139,7 @@
 		handleActiveOptionChange($activeOption$, options);
 	}
 
-	export function handleOptionsChange(thisOptions?: { scrollActiveOptionIntoView?: boolean }) {
+	export function handleOptionsChange() {
 		optionValueToElMap.clear();
 		options = [];
 		optionsValues = [];
@@ -163,7 +163,7 @@
 		optionValueToElMap = optionValueToElMap;
 
 		setActiveOption(optionToActivate, {
-			scrollIntoView: thisOptions?.scrollActiveOptionIntoView
+			scrollIntoView: true
 		});
 	}
 
