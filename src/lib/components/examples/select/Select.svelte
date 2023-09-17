@@ -40,12 +40,11 @@
 	let inputId = `${id}__input`;
 
 	let isListboxOpen: boolean = false;
-	let userExplicitlyClosed: boolean = false;
 	let userBlurredWithTab: boolean = false;
 
 	let value$ = writable<string>(value);
 	$: $value$ = value;
-	let oldValue = value;
+	let lastCommittedValue = value;
 	let canCommitValue = false;
 
 	let activeOption$: Writable<ActiveOption> = writable(undefined);
@@ -107,10 +106,8 @@
 	function tryToCommitValue() {
 		if (!canCommitValue) return;
 
-		let mustDispatchChange = oldValue !== value;
-
-		if (mustDispatchChange) {
-			oldValue = value;
+		if (lastCommittedValue !== value) {
+			lastCommittedValue = value;
 			dispatch('change', { value });
 			canCommitValue = false;
 		}
@@ -120,7 +117,6 @@
 		if (isListboxOpen || disabled) return;
 
 		dispatch('before-open');
-		userExplicitlyClosed = false;
 		isListboxOpen = true;
 		await tick();
 	}
@@ -150,13 +146,15 @@
 			'li[role="option"][id][data-value]:not([aria-disabled])'
 		);
 		for (const optionEl of optionsEl) {
-			const optionValue = optionEl.getAttribute('data-value')!;
+			const optionValue = getValueFromOption(optionEl)!;
 			if (!optionValueToElMap.has(optionValue)) {
 				optionValueToElMap.set(optionValue, optionEl);
 				optionsValues.push(optionValue);
 			}
 
-			if (value === optionValue) optionToActivate = optionEl;
+			if ($activeOption$ && getValueFromOption($activeOption$) === optionValue)
+				optionToActivate = optionEl;
+
 			options.push(optionEl);
 		}
 
@@ -182,7 +180,7 @@
 			return buttonEl.focus();
 		}
 
-		userExplicitlyClosed = userBlurredWithTab = false;
+		userBlurredWithTab = false;
 		close();
 		tryToCommitValue();
 	}
@@ -191,7 +189,6 @@
 		if (optionEl.getAttribute('aria-disabled') === 'true') return;
 
 		setValueFromOptionEl(optionEl);
-		userExplicitlyClosed = false;
 		close();
 		buttonEl.focus();
 		tryToCommitValue();
@@ -201,7 +198,6 @@
 		if (!isListboxOpen) {
 			tryToOpen();
 		} else {
-			userExplicitlyClosed = true;
 			close();
 		}
 	}
@@ -216,9 +212,9 @@
 		let isHandled = false;
 		let mustPreventDefault = false;
 		let mustTryToOpen = false;
+		let isFilterKey = false;
 
 		switch (event.key) {
-			case 'Enter':
 			case ' ':
 			case 'ArrowDown':
 			case 'ArrowUp':
@@ -227,6 +223,7 @@
 			case 'Escape':
 				isHandled = mustPreventDefault = true;
 				break;
+			case 'Enter':
 			case 'PageUp':
 			case 'PageDown':
 				isHandled = mustPreventDefault = isListboxOpen;
@@ -235,28 +232,24 @@
 				isHandled = true;
 				break;
 			default:
-				isHandled = !!event.key.match(printableCharRegex);
+				isHandled = isFilterKey = !!event.key.match(printableCharRegex);
 				break;
 		}
 
 		if (!isListboxOpen) {
 			switch (event.key) {
-				case 'Enter':
 				case 'ArrowDown':
 				case 'ArrowUp':
 				case 'PageUp':
 				case 'PageDown':
 				case 'Home':
 				case 'End':
-					if (
-						(!userExplicitlyClosed && event.key !== 'Enter') ||
-						(event.key === 'ArrowUp' && event.altKey)
-					) {
-						break;
-					} else mustTryToOpen = true;
+					if (!(event.altKey && event.key === 'ArrowUp')) {
+						mustTryToOpen = true;
+					}
 					break;
 				default:
-					if (isHandled) mustTryToOpen = !userExplicitlyClosed;
+					if (isFilterKey) mustTryToOpen = true;
 			}
 		}
 
@@ -264,6 +257,10 @@
 		if (mustPreventDefault) event.preventDefault();
 		if (mustTryToOpen) {
 			tryToOpen();
+
+			if ($activeOption$) {
+				return;
+			}
 		}
 
 		switch (event.key) {
@@ -272,7 +269,6 @@
 				if (isListboxOpen) {
 					if ($activeOption$ != null) {
 						setValueFromOptionEl($activeOption$);
-						userExplicitlyClosed = false;
 						close();
 						tryToCommitValue();
 					}
@@ -287,7 +283,6 @@
 			case 'PageDown': {
 				if (event.altKey) {
 					if (isListboxOpen && event.key === 'ArrowUp') {
-						userExplicitlyClosed = true;
 						close();
 					}
 					break;
@@ -323,7 +318,6 @@
 
 			case 'Escape':
 				if (isListboxOpen) {
-					userExplicitlyClosed = true;
 					close();
 				} else if (value) {
 					setValue('');
@@ -333,8 +327,7 @@
 
 			case 'Tab':
 				userBlurredWithTab = true;
-				if ($activeOption$ != null) setValueFromOptionEl($activeOption$);
-				userExplicitlyClosed = false;
+				if ($activeOption$ != null && isListboxOpen) setValueFromOptionEl($activeOption$);
 				close();
 				tryToCommitValue();
 

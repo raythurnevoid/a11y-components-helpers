@@ -14,18 +14,21 @@
 	let el: HTMLElement;
 
 	const { activeOption$, value$, handleOptionClick } = getContext<AutocompleteContext>('select');
+
+	$: isSelected = $value$ === value;
+	$: isActive = $activeOption$ === el;
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <li
 	bind:this={el}
 	{id}
-	class="Autocomplete"
-	class:Autocomplete--active={$activeOption$ === el}
-	class:Autocomplete--selected={$value$ === value}
+	class="AutocompleteOption"
+	class:AutocompleteOption--selected={isSelected}
+	class:AutocompleteOption--active={isActive}
 	data-value={value}
 	role="option"
-	aria-selected={$activeOption$ === el}
+	aria-selected={isActive}
 	aria-disabled={disabled || undefined}
 	on:click={(e) => handleOptionClick(e.currentTarget)}
 >
@@ -33,19 +36,19 @@
 </li>
 
 <style>
-	.Autocomplete {
+	.AutocompleteOption {
 		cursor: pointer;
 	}
 
-	.Autocomplete:where(:hover) {
+	.AutocompleteOption:where(:hover) {
 		background-color: whitesmoke;
 	}
 
-	.Autocomplete--selected {
+	.AutocompleteOption--selected {
 		background-color: lightblue;
 	}
 
-	.Autocomplete--active {
+	.AutocompleteOption--active {
 		background-color: lightgray;
 	}
 </style>

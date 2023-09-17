@@ -4,8 +4,7 @@
 		AutocompleteOption
 	} from '$lib/components/examples/autocomplete/Autocomplete.svelte';
 	import { debounce } from '../../lib/debounce.js';
-	import { tick } from 'svelte';
-	import { createPromiseWithResolvers } from '../../lib/promise-with-resolvers.js';
+	import { onMount, tick } from 'svelte';
 
 	let autocompleteComp: Autocomplete;
 
@@ -15,13 +14,28 @@
 
 	let cachedFilter: string | null | undefined = undefined;
 	let errorMessage: string | null = null;
-	let loading: boolean = false;
+	let isLoading: boolean = false;
 
-	let computeOptionsIsRunning: boolean = false;
+	let areOptionsReady = false;
 	let computeOptionsPromise: Promise<boolean> | null = null;
 
-	async function computeOptions(filter: string | null): Promise<boolean> {
-		computeOptionsIsRunning = true;
+	$: asyncOptions = {
+		checkIfAreReady: () => areOptionsReady,
+		getPromise: () =>
+			new Promise<void>(async (resolve) => {
+				computeOptionsPromise?.then((canContinue) => {
+					console.log(canContinue);
+					if (canContinue) resolve();
+				});
+			})
+	} as Autocomplete['$$props_def']['asyncOptions'];
+
+	onMount(() => {
+		computeOptions(value);
+	});
+
+	async function computeOptions(filter: string): Promise<boolean> {
+		areOptionsReady = false;
 
 		computeOptionsPromise = new Promise(async (resolve) => {
 			try {
@@ -29,7 +43,7 @@
 
 				errorMessage = null;
 
-				loading = true;
+				isLoading = true;
 
 				const checkIfOverlap = await debounce({
 					key: computeOptions,
@@ -64,8 +78,8 @@
 			}
 
 			async function handleCompletition() {
-				computeOptionsIsRunning = false;
-				loading = false;
+				areOptionsReady = true;
+				isLoading = false;
 				await handleOptionsChange();
 				resolve(true);
 			}
@@ -78,29 +92,8 @@
 		selectedValue = suggestions?.find((suggestion) => suggestion === event.detail.value) ?? '';
 	}
 
-	function handleFocusOrBeforeOpen() {
-		if (!computeOptionsIsRunning) computeOptions(value);
-	}
-
-	async function handleOpen(event: Autocomplete['$$events_def']['open']) {
-		if (!computeOptionsIsRunning) return;
-
-		const promise = createPromiseWithResolvers<void>();
-		event.detail.waitForToProceed(promise.promise);
-		while (!(await computeOptionsPromise)) {}
-		promise.resolve();
-	}
-
 	function handleInput() {
 		computeOptions(value);
-	}
-
-	function handleOptionsToBeReadyRequest(
-		event: Autocomplete['$$events_def']['options-to-be-ready-request']
-	) {
-		computeOptionsPromise?.then((canContinue) => {
-			if (canContinue) event.detail.proceed();
-		});
 	}
 </script>
 
@@ -110,17 +103,14 @@
 		bind:value
 		label="State"
 		autocomplete="both"
-		asyncOptions
-		on:focus={handleFocusOrBeforeOpen}
-		on:before-open={handleFocusOrBeforeOpen}
-		on:open={handleOpen}
+		{asyncOptions}
+		on:focus={handleFocus}
 		on:change={handleChange}
 		on:input={handleInput}
-		on:options-to-be-ready-request={handleOptionsToBeReadyRequest}
 	>
 		{#if errorMessage}
 			<li role="option" aria-selected="false" aria-disabled>{errorMessage}</li>
-		{:else if loading}
+		{:else if isLoading}
 			<li role="option" aria-selected="false" aria-disabled>Loading...</li>
 		{:else if suggestions?.length}
 			{#each suggestions as option}
