@@ -166,6 +166,7 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y-no-static-element-interactions -->
 <div {id} bind:this={el} class="MenuButton" on:keydown={handleKeyDown} on:focusout={handleFocusOut}>
 	<button
 		bind:this={buttonEl}

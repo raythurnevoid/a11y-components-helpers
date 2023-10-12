@@ -180,9 +180,10 @@
 			return buttonEl.focus();
 		}
 
-		userBlurredWithTab = false;
 		close();
-		tryToCommitValue();
+
+		if (userBlurredWithTab) userBlurredWithTab = false;
+		else tryToCommitValue();
 	}
 
 	function handleOptionClick(optionEl: HTMLElement) {
@@ -328,7 +329,6 @@
 			case 'Tab':
 				userBlurredWithTab = true;
 				if ($activeOption$ != null && isListboxOpen) setValueFromOptionEl($activeOption$);
-				close();
 				tryToCommitValue();
 
 				break;

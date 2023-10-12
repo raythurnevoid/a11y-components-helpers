@@ -93,13 +93,16 @@
 	}
 
 	function setValue(
-		input:
+		input: (
 			| {
 					newValue: string;
 			  }
 			| {
 					optionEl: HTMLElement;
 			  }
+		) & {
+			skipSelectionRangeUpdate?: boolean;
+		}
 	) {
 		let newValueOptionEl;
 		let newValue;
@@ -114,7 +117,8 @@
 		if (value !== newValue) {
 			canCommitValue = true;
 			comboboxEl.value = value = newValue;
-			comboboxEl.setSelectionRange(value.length, value.length);
+			if (input.skipSelectionRangeUpdate !== true)
+				comboboxEl.setSelectionRange(value.length, value.length);
 		}
 
 		setActiveOption(newValueOptionEl);
@@ -216,9 +220,10 @@
 			return comboboxEl.focus();
 		}
 
-		userBlurredWithTab = false;
 		close();
-		tryToCommitValue();
+
+		if (userBlurredWithTab) userBlurredWithTab = false;
+		else tryToCommitValue();
 	}
 
 	function handleOptionClick(optionEl: HTMLElement) {
@@ -371,7 +376,6 @@
 			case 'Tab':
 				userBlurredWithTab = true;
 				if ($activeOption$ != null && isListboxOpen) setValue({ optionEl: $activeOption$ });
-				close();
 				tryToCommitValue();
 
 				break;
@@ -380,7 +384,10 @@
 
 	async function handleInput(e: Event) {
 		const event = e as InputEvent;
-		value = comboboxEl.value;
+		setValue({
+			newValue: comboboxEl.value,
+			skipSelectionRangeUpdate: true
+		});
 
 		dispatch('input', {
 			value
@@ -403,7 +410,7 @@
 
 			if (!$activeOption$ || document.activeElement !== comboboxEl) return;
 			const selectionStart = value.length;
-			comboboxEl.value = value = getValueFromOption($activeOption$);
+			setValue({ optionEl: $activeOption$, skipSelectionRangeUpdate: true });
 			comboboxEl.setSelectionRange(selectionStart, value.length);
 		}
 	}
